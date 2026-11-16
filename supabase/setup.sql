@@ -87,3 +87,20 @@ create policy "Own shopping items" on public.shopping_items for all to authentic
 drop policy if exists "Own shopping memory" on public.shopping_memory;
 create policy "Own shopping memory" on public.shopping_memory for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+
+-- Books (added later; safe to re-run)
+create table if not exists public.books (
+  id           text primary key,
+  user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  title        text not null check (char_length(title) between 1 and 300),
+  author       text not null default '',
+  cover_url    text,
+  status       text not null default 'to_read' check (status in ('to_read','reading','read')),
+  source_key   text,
+  created_at   timestamptz not null default now(),
+  finished_at  timestamptz
+);
+alter table public.books enable row level security;
+drop policy if exists "Own books" on public.books;
+create policy "Own books" on public.books for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);

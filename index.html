@@ -174,6 +174,15 @@
       <div id="shop-groups"></div>
       <div id="shop-basket"></div>
     </section>
+
+    <section id="books-mode" hidden aria-label="Books">
+      <div class="shelf-tabs" role="tablist" aria-label="Shelves">
+        <button type="button" role="tab" id="shelf-to_read" data-shelf="to_read">To read <span></span></button>
+        <button type="button" role="tab" id="shelf-reading" data-shelf="reading">Reading <span></span></button>
+        <button type="button" role="tab" id="shelf-read" data-shelf="read">Read <span></span></button>
+      </div>
+      <div class="cover-grid" id="cover-grid" role="tabpanel"></div>
+    </section>
   </main>
   <button class="fab" id="fab-add" type="button" aria-label="Add task"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
 </div>
@@ -265,6 +274,49 @@
       <button type="submit" class="primary">Save</button>
     </div>
   </form>
+</div>
+
+<!-- Add book -->
+<div class="overlay" id="book-add-overlay" role="dialog" aria-modal="true" aria-labelledby="ba-heading">
+  <div class="sheet">
+    <h3 id="ba-heading">Add a book</h3>
+    <form class="shop-add" id="ba-form" autocomplete="off">
+      <input type="search" id="ba-query" placeholder="Title, author or both" aria-label="Search for a book" maxlength="200" enterkeyhint="search">
+      <button class="primary" type="submit">Search</button>
+    </form>
+    <p class="field-hint" id="ba-status">Search, then tap the right edition to add it with its cover.</p>
+    <ul class="book-results" id="ba-results"></ul>
+    <div class="sheet-actions">
+      <button type="button" class="ghost" id="ba-manual" hidden>Add without cover</button>
+      <button type="button" class="ghost" id="ba-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Book details -->
+<div class="overlay" id="book-overlay" role="dialog" aria-modal="true" aria-labelledby="bk-title">
+  <div class="sheet">
+    <div class="book-detail">
+      <div class="book-detail-cover" id="bk-cover"></div>
+      <div class="book-detail-text">
+        <h3 id="bk-title">Book</h3>
+        <p class="book-author" id="bk-author"></p>
+        <p class="field-hint" id="bk-dates"></p>
+      </div>
+    </div>
+    <div class="form-field">
+      <span class="lbl" id="bk-shelf-lbl">Shelf</span>
+      <div class="seg" role="radiogroup" aria-labelledby="bk-shelf-lbl">
+        <input type="radio" name="bk-shelf" id="bk-shelf-to_read" value="to_read"><label for="bk-shelf-to_read">To read</label>
+        <input type="radio" name="bk-shelf" id="bk-shelf-reading" value="reading"><label for="bk-shelf-reading">Reading</label>
+        <input type="radio" name="bk-shelf" id="bk-shelf-read" value="read"><label for="bk-shelf-read">Read</label>
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="danger" id="bk-delete">Remove</button>
+      <button type="button" class="primary" id="bk-close">Done</button>
+    </div>
+  </div>
 </div>
 
 <!-- Category editor -->

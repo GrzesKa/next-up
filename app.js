@@ -50,6 +50,7 @@
     all: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M2.5 4h11M2.5 8h11M2.5 12h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     today: '<svg class="icon" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
     cal: '<svg class="icon" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 6.5h11" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="9.3" r=".9" fill="currentColor"/><circle cx="8" cy="9.3" r=".9" fill="currentColor"/><circle cx="10.5" cy="9.3" r=".9" fill="currentColor"/><circle cx="5.5" cy="11.6" r=".9" fill="currentColor"/></svg>',
+    book: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M3 2.5h7.5a2 2 0 0 1 2 2v9H5a2 2 0 0 1-2-2v-9z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M3 11.5a2 2 0 0 1 2-2h7.5" stroke="currentColor" stroke-width="1.5"/></svg>',
     cart: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M1.8 2.5h2l1.6 7.6h7l1.5-5.4H4.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.3" cy="13" r="1.1" fill="currentColor"/><circle cx="11.6" cy="13" r="1.1" fill="currentColor"/></svg>',
     week: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M3 12.5l3-4 3 2 4-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     check: '<svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.3 2.3 4.7-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -64,6 +65,7 @@
   let cats = [];
   let tasks = [];
   let shop = [];
+  let books = [];
   let mem = [];
   let loaded = false;
   let seeding = false;
@@ -72,9 +74,10 @@
   let sortBy = prefs.sortBy || "urgency";
   let showDone = !!prefs.showDone;
   let calCat = prefs.calCat || "";
+  let shelf = prefs.shelf || "to_read";
 
   function loadPrefs() { try { return JSON.parse(localStorage.getItem("nextup.prefs") || "{}"); } catch (e) { return {}; } }
-  function savePrefs() { try { localStorage.setItem("nextup.prefs", JSON.stringify({ view, sortBy, showDone, calCat })); } catch (e) {} }
+  function savePrefs() { try { localStorage.setItem("nextup.prefs", JSON.stringify({ view, sortBy, showDone, calCat, shelf })); } catch (e) {} }
 
   const $ = (id) => document.getElementById(id);
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -193,6 +196,8 @@
   const catToRow = (c) => ({ id: c.id, user_id: userId, name: c.name, color: c.color, position: c.position || 0 });
   const shopFromRow = (r) => ({ id: r.id, name: r.name || "", aisle: r.aisle || "other", done: !!r.done, doneAt: r.done_at ? Date.parse(r.done_at) : null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now() });
   const shopToRow = (i) => ({ id: i.id, user_id: userId, name: i.name, aisle: i.aisle || "other", done: !!i.done, done_at: toIso(i.doneAt), created_at: toIso(i.createdAt) });
+  const bookFromRow = (r) => ({ id: r.id, title: r.title || "", author: r.author || "", coverUrl: r.cover_url || null, status: r.status || "to_read", sourceKey: r.source_key || null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now(), finishedAt: r.finished_at ? Date.parse(r.finished_at) : null });
+  const bookToRow = (b) => ({ id: b.id, user_id: userId, title: b.title, author: b.author || "", cover_url: b.coverUrl || null, status: b.status || "to_read", source_key: b.sourceKey || null, created_at: toIso(b.createdAt), finished_at: toIso(b.finishedAt) });
   const memFromRow = (r) => ({ id: r.id, word: r.word || "", aisle: r.aisle || "other" });
   const sortCats = () => { cats = cats.slice().sort((a, b) => a.position - b.position || a.name.localeCompare(b.name)); };
 
@@ -231,12 +236,13 @@
   let needsReload = false;
   let offlineSession = false;
 
-  function saveLocal() { if (userId && loaded) LS.set(cacheKey(), { cats, tasks, shop, mem, savedAt: Date.now() }); }
+  function saveLocal() { if (userId && loaded) LS.set(cacheKey(), { cats, tasks, shop, mem, books, savedAt: Date.now() }); }
   function loadLocal() {
     const c = LS.get(cacheKey(), null);
     if (!c) return false;
     cats = Array.isArray(c.cats) ? c.cats : []; tasks = Array.isArray(c.tasks) ? c.tasks : [];
     shop = Array.isArray(c.shop) ? c.shop : []; mem = Array.isArray(c.mem) ? c.mem : [];
+    books = Array.isArray(c.books) ? c.books : [];
     sortCats(); loaded = true;
     return true;
   }
@@ -268,6 +274,7 @@
     categories: { get: () => cats, set: (a) => { cats = a; sortCats(); }, from: (r) => catFromRow(r) },
     shopping_items: { get: () => shop, set: (a) => { shop = a; }, from: (r) => shopFromRow(r) },
     shopping_memory: { get: () => mem, set: (a) => { mem = a; }, from: (r) => memFromRow(r) },
+    books: { get: () => books, set: (a) => { books = a; }, from: (r) => bookFromRow(r) },
   };
   function applyOpLocal(op) {
     const T = TABLES[op.table];
@@ -319,13 +326,14 @@
   async function loadAll(quiet) {
     if (!userId || offlineSession) return;
     if (!quiet && !loaded) setStatus("", "Loading your tasks…");
-    let c, t, si, sm;
+    let c, t, si, sm, bk;
     try {
-      [c, t, si, sm] = await Promise.all([
+      [c, t, si, sm, bk] = await Promise.all([
         sb.from("categories").select("*").order("position", { ascending: true }),
         sb.from("tasks").select("*").order("created_at", { ascending: true }),
         sb.from("shopping_items").select("*").order("created_at", { ascending: true }),
         sb.from("shopping_memory").select("*"),
+        sb.from("books").select("*").order("created_at", { ascending: true }),
       ]);
     } catch (e) { c = { error: e }; t = { error: e }; }
     if (c.error || t.error) {
@@ -341,6 +349,7 @@
     tasks = t.data.map(taskFromRow);
     if (si && !si.error) shop = si.data.map(shopFromRow);
     if (sm && !sm.error) mem = sm.data.map(memFromRow);
+    if (bk && !bk.error) books = bk.data.map(bookFromRow);
     outbox.forEach(applyOpLocal);
     loaded = true;
     if (!cats.length && !tasks.length && !seeding && !outbox.length) seedDefaults();
@@ -365,6 +374,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, (p) => applyChange("categories", p))
       .on("postgres_changes", { event: "*", schema: "public", table: "shopping_items" }, (p) => applyChange("shopping_items", p))
       .on("postgres_changes", { event: "*", schema: "public", table: "shopping_memory" }, (p) => applyChange("shopping_memory", p))
+      .on("postgres_changes", { event: "*", schema: "public", table: "books" }, (p) => applyChange("books", p))
       .subscribe((status) => {
         if (status === "SUBSCRIBED" && loaded) statusLine();
       });
@@ -559,6 +569,7 @@
       { v: { type: "week" }, name: "Next 7 days", icon: ICONS.week, count: open.filter((t) => inView(t, { type: "week" })).length },
       { v: { type: "calendar" }, name: "Calendar", icon: ICONS.cal, count: 0 },
       { v: { type: "shopping" }, name: "Shopping", icon: ICONS.cart, count: shop.filter((i) => !i.done).length },
+      { v: { type: "books" }, name: "Books", icon: ICONS.book, count: books.filter((b) => b.status === "to_read").length },
     ];
     const nv = $("nav-views"); nv.innerHTML = "";
     views.forEach((it) => nv.appendChild(navButton(it.v, it.name, it.icon, null, it.count, it.alert)));
@@ -577,7 +588,7 @@
     if (color) { applyPair(b, color); b.appendChild(el("span", "dot")); }
     b.appendChild(el("span", "name", name));
     if (isCat) b.appendChild(el("span", "count" + (count ? "" : " zero"), String(count)));
-    else if (count || v.type === "all" || v.type === "today" || v.type === "week" || v.type === "shopping") b.appendChild(el("span", "count" + (alert ? " alert" : "") + (count ? "" : " zero"), String(count)));
+    else if (count || v.type === "all" || v.type === "today" || v.type === "week" || v.type === "shopping" || v.type === "books") b.appendChild(el("span", "count" + (alert ? " alert" : "") + (count ? "" : " zero"), String(count)));
     b.addEventListener("click", () => { view = v; savePrefs(); render(); if (isPhone()) enterView(); });
     return b;
   }
@@ -681,17 +692,21 @@
     const c = view.type === "cat" ? catById(view.id) : null;
     const isCal = view.type === "calendar";
     const isShop = view.type === "shopping";
-    $("view-title").textContent = isShop ? "Shopping" : isCal ? "Calendar" : view.type === "today" ? "Today" : view.type === "week" ? "Next 7 days" : view.type === "cat" ? (c ? c.name : "No category") : "All tasks";
+    const isBooks = view.type === "books";
+    $("view-title").textContent = isBooks ? "Books" : isShop ? "Shopping" : isCal ? "Calendar" : view.type === "today" ? "Today" : view.type === "week" ? "Next 7 days" : view.type === "cat" ? (c ? c.name : "No category") : "All tasks";
     $("btn-edit-cat").hidden = !c;
-    $("list-mode").hidden = isCal || isShop;
+    $("list-mode").hidden = isCal || isShop || isBooks;
+    $("books-mode").hidden = !isBooks;
     $("cal-mode").hidden = !isCal;
     $("shop-mode").hidden = !isShop;
     $("btn-add").hidden = isShop;
+    $("btn-add").innerHTML = isBooks ? '<span aria-hidden="true">+</span> Add book' : '<span aria-hidden="true">+</span> Add task';
     $("main").classList.toggle("wide", isCal);
 
     if (!loaded) { $("list").innerHTML = '<li class="loading">Loading your tasks…</li>'; return; }
     if (isCal) { renderCalendar(); return; }
     if (isShop) { renderShopping(); return; }
+    if (isBooks) { renderBooks(); return; }
 
     const scoped = tasks.filter((t) => inView(t, view));
     const open = scoped.filter((t) => !t.done);
@@ -910,6 +925,194 @@
     closeOverlay("shop-overlay"); editingShop = null;
     deleteShop([copy]);
     toast("Removed: " + clip(copy.name, 30), () => restoreShop([copy]));
+  });
+
+  // ---------- books ----------
+  const SHELF_NAME = { to_read: "To read", reading: "Reading", read: "Read" };
+  function coverNode(b, size) {
+    const box = el("div", "cover" + (size ? " " + size : ""));
+    const fallback = () => {
+      box.innerHTML = "";
+      box.classList.add("gen");
+      const pair = PAIRS[Math.abs(hashStr(b.title + b.author)) % PAIRS.length];
+      box.style.setProperty("--c", pair.sq); box.style.setProperty("--c2", pair.ci); box.style.setProperty("--ct", inkOn(pair.sq));
+      box.appendChild(el("span", "gen-dot"));
+      box.appendChild(el("span", "gen-title", b.title));
+      if (b.author) box.appendChild(el("span", "gen-author", b.author.toUpperCase()));
+    };
+    if (b.coverUrl) {
+      const img = document.createElement("img");
+      img.alt = ""; img.loading = "lazy"; img.decoding = "async"; img.referrerPolicy = "no-referrer";
+      img.src = b.coverUrl;
+      img.addEventListener("error", fallback);
+      img.addEventListener("load", () => { if (img.naturalWidth < 20) fallback(); });
+      box.appendChild(img);
+    } else fallback();
+    return box;
+  }
+  function hashStr(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return h; }
+
+  function renderBooks() {
+    const counts = { to_read: 0, reading: 0, read: 0 };
+    books.forEach((b) => { counts[b.status] = (counts[b.status] || 0) + 1; });
+    $("view-sub").textContent = counts.to_read + " to read · " + counts.reading + " reading · " + counts.read + " read";
+    document.querySelectorAll(".shelf-tabs button").forEach((bt) => {
+      const on = bt.dataset.shelf === shelf;
+      bt.setAttribute("aria-selected", on ? "true" : "false");
+      bt.querySelector("span").textContent = counts[bt.dataset.shelf] || "";
+    });
+    const grid = $("cover-grid"); grid.innerHTML = "";
+    const list = books.filter((b) => b.status === shelf)
+      .sort((a, b) => shelf === "read" ? (b.finishedAt || b.createdAt) - (a.finishedAt || a.createdAt) : (a.createdAt || 0) - (b.createdAt || 0));
+    list.forEach((b) => {
+      const btn = el("button", "cover-btn"); btn.type = "button";
+      btn.setAttribute("aria-label", b.title + (b.author ? " by " + b.author : ""));
+      btn.title = b.title + (b.author ? " – " + b.author : "");
+      btn.appendChild(coverNode(b));
+      btn.addEventListener("click", () => openBook(b));
+      grid.appendChild(btn);
+    });
+    const add = el("button", "cover-btn add-book"); add.type = "button";
+    add.innerHTML = '<span class="add-plus" aria-hidden="true">+</span><span>Add book</span>';
+    add.addEventListener("click", openBookAdd);
+    grid.appendChild(add);
+    if (!list.length && shelf !== "to_read") {
+      const p = el("p", "next-empty shelf-empty", shelf === "reading" ? "Nothing on the go. Open a book and move it to Reading." : "Books you finish will collect here.");
+      grid.insertBefore(p, grid.firstChild);
+    }
+  }
+  document.querySelectorAll(".shelf-tabs button").forEach((bt) => bt.addEventListener("click", () => { shelf = bt.dataset.shelf; savePrefs(); renderBooks(); }));
+
+  function addBook(data) {
+    const b = Object.assign({ id: uid("b"), title: "", author: "", coverUrl: null, status: shelf === "read" ? "read" : shelf, sourceKey: null, createdAt: Date.now(), finishedAt: null }, data);
+    if (b.status === "read" && !b.finishedAt) b.finishedAt = Date.now();
+    books = books.concat([b]); render();
+    enqueue({ kind: "upsert", table: "books", rows: [bookToRow(b)] });
+    toast("Added to " + SHELF_NAME[b.status] + ": " + clip(b.title, 30));
+  }
+  function updateBook(id, patch) {
+    books = books.map((x) => (x.id === id ? Object.assign({}, x, patch) : x)); render();
+    const row = {};
+    if ("status" in patch) row.status = patch.status;
+    if ("finishedAt" in patch) row.finished_at = toIso(patch.finishedAt);
+    enqueue({ kind: "update", table: "books", id, patch: row, local: patch });
+  }
+  function deleteBook(b) {
+    const copy = Object.assign({}, b);
+    books = books.filter((x) => x.id !== b.id); render();
+    enqueue({ kind: "delete", table: "books", ids: [b.id] });
+    toast("Removed: " + clip(b.title, 30), () => { books = books.concat([copy]); render(); enqueue({ kind: "upsert", table: "books", rows: [bookToRow(copy)] }); });
+  }
+
+  // Add-book search: Open Library first, Google Books as backup. Needs a connection.
+  let lastQuery = "";
+  function openBookAdd() {
+    $("ba-query").value = ""; $("ba-results").innerHTML = ""; $("ba-manual").hidden = true;
+    $("ba-status").textContent = isOffline() ? "You're offline. Searching for covers needs internet, but you can add the book without a cover." : "Search, then tap the right edition to add it with its cover.";
+    openOverlay("book-add-overlay", "ba-query");
+  }
+  async function searchOpenLibrary(q) {
+    const url = "https://openlibrary.org/search.json?q=" + encodeURIComponent(q) + "&limit=12&fields=key,title,author_name,cover_i,first_publish_year";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("openlibrary " + res.status);
+    const data = await res.json();
+    return (data.docs || []).map((d) => ({
+      title: d.title || "", author: (d.author_name || []).slice(0, 2).join(", "), year: d.first_publish_year || "",
+      coverUrl: d.cover_i ? "https://covers.openlibrary.org/b/id/" + d.cover_i + "-L.jpg" : null,
+      thumb: d.cover_i ? "https://covers.openlibrary.org/b/id/" + d.cover_i + "-M.jpg" : null,
+      sourceKey: "ol:" + (d.key || ""),
+    }));
+  }
+  async function searchGoogle(q) {
+    const res = await fetch("https://www.googleapis.com/books/v1/volumes?q=" + encodeURIComponent(q) + "&maxResults=12&printType=books");
+    if (!res.ok) throw new Error("google " + res.status);
+    const data = await res.json();
+    return (data.items || []).map((it) => {
+      const v = it.volumeInfo || {};
+      const img = v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail);
+      const https = img ? img.replace(/^http:/, "https:").replace("&edge=curl", "") : null;
+      return { title: v.title || "", author: (v.authors || []).slice(0, 2).join(", "), year: (v.publishedDate || "").slice(0, 4),
+        coverUrl: https, thumb: https, sourceKey: "gb:" + (it.id || "") };
+    });
+  }
+  async function runBookSearch(q) {
+    lastQuery = q;
+    const list = $("ba-results"); list.innerHTML = "";
+    $("ba-status").textContent = "Searching…";
+    $("ba-manual").hidden = false; $("ba-manual").textContent = "Add “" + clip(q, 28) + "” without a cover";
+    let results = [];
+    try { results = (await searchOpenLibrary(q)).filter((r) => r.title); } catch (e) { console.warn(e); }
+    if (results.filter((r) => r.coverUrl).length < 3) {
+      try { results = results.concat((await searchGoogle(q)).filter((r) => r.title)); } catch (e) { console.warn(e); }
+    }
+    if (lastQuery !== q) return;
+    results.sort((a, b) => (b.coverUrl ? 1 : 0) - (a.coverUrl ? 1 : 0));
+    const seen = new Set();
+    results = results.filter((r) => { const k = (r.title + "|" + r.author).toLowerCase() + "|" + (r.coverUrl ? "c" : ""); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 12);
+    if (!results.length) {
+      $("ba-status").textContent = isOffline() ? "You're offline. Add it without a cover, or search again when you're back online." : "No matches. Try the author's name too, or add it without a cover.";
+      return;
+    }
+    $("ba-status").textContent = "Tap the right edition to add it to " + SHELF_NAME[shelf] + ".";
+    results.forEach((r) => {
+      const li = el("li");
+      const b = el("button", "book-result"); b.type = "button";
+      b.appendChild(coverNode({ title: r.title, author: r.author, coverUrl: r.thumb }, "small"));
+      const txt = el("span", "br-text");
+      txt.appendChild(el("span", "br-title", r.title));
+      txt.appendChild(el("span", "br-meta", [r.author, r.year].filter(Boolean).join(" · ") || "Unknown author"));
+      b.appendChild(txt);
+      b.addEventListener("click", () => {
+        closeOverlay("book-add-overlay");
+        addBook({ title: r.title, author: r.author, coverUrl: r.coverUrl, sourceKey: r.sourceKey });
+      });
+      li.appendChild(b); list.appendChild(li);
+    });
+  }
+  $("ba-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const q = $("ba-query").value.trim();
+    if (!q) { $("ba-query").focus(); return; }
+    runBookSearch(q);
+  });
+  $("ba-manual").addEventListener("click", () => {
+    const q = ($("ba-query").value || lastQuery).trim();
+    if (!q) { $("ba-query").focus(); return; }
+    closeOverlay("book-add-overlay");
+    addBook({ title: pretty(q), author: "" });
+  });
+  $("ba-query").addEventListener("input", () => {
+    const q = $("ba-query").value.trim();
+    $("ba-manual").hidden = !q;
+    if (q) $("ba-manual").textContent = "Add “" + clip(q, 28) + "” without a cover";
+  });
+  $("ba-close").addEventListener("click", () => closeOverlay("book-add-overlay"));
+
+  let openBookItem = null;
+  function openBook(b) {
+    openBookItem = b;
+    const cv = $("bk-cover"); cv.innerHTML = ""; cv.appendChild(coverNode(b, "large"));
+    $("bk-title").textContent = b.title;
+    $("bk-author").textContent = b.author || "Unknown author";
+    const added = new Date(b.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    $("bk-dates").textContent = "Added " + added + (b.finishedAt ? " · Finished " + new Date(b.finishedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "");
+    $("bk-shelf-" + b.status).checked = true;
+    openOverlay("book-overlay", "bk-close");
+  }
+  document.querySelectorAll('input[name="bk-shelf"]').forEach((inp) => inp.addEventListener("change", () => {
+    if (!openBookItem || !inp.checked) return;
+    const status = inp.value;
+    const patch = { status, finishedAt: status === "read" ? (openBookItem.finishedAt || Date.now()) : null };
+    updateBook(openBookItem.id, patch);
+    openBookItem = Object.assign({}, openBookItem, patch);
+    toast("Moved to " + SHELF_NAME[status]);
+  }));
+  $("bk-close").addEventListener("click", () => { closeOverlay("book-overlay"); openBookItem = null; });
+  $("bk-delete").addEventListener("click", () => {
+    if (!openBookItem) return;
+    const b = openBookItem; openBookItem = null;
+    closeOverlay("book-overlay");
+    deleteBook(b);
   });
 
   // ---------- phone: home tiles and drill-in ----------
@@ -1152,6 +1355,7 @@
     if (!userId) return;
     const onHome = isPhone() && !document.body.classList.contains("in-view");
     if (view.type === "shopping" && !onHome) { $("shop-input").focus(); return; }
+    if (view.type === "books" && !onHome) { openBookAdd(); return; }
     let categoryId = null, due = null;
     if (!onHome) {
       if (view.type === "cat" && view.id !== "none") categoryId = view.id;
