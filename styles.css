@@ -301,3 +301,16 @@ ul.tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-directio
   .cal-bar h3 { min-width: 0; font-size: 21px; }
   .hint.desk { display: none; }
 }
+
+/* ---------- repeating tasks ---------- */
+.field-hint { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.meta .rep { color: var(--forest); font-weight: 600; }
+.next-card .meta { white-space: pre-wrap; }
+.pill.ghost { background: transparent; border: 1px dashed var(--faint); border-left: 3px solid var(--c, var(--line)); color: var(--muted); font-weight: 500; }
+.ghost-row button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 1px dashed var(--line); background: none; border-radius: 12px; padding: 10px 12px; text-align: left; color: var(--muted); }
+.ghost-row .t { font-weight: 600; overflow-wrap: anywhere; }
+.ghost-row .when { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; white-space: nowrap; }
+.ghost-row { list-style: none; }
+@media (max-width: 600px) {
+  .pill.ghost { background: transparent; border: 1px dashed var(--c, var(--faint)); height: 5px; }
+}

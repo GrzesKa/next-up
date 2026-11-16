@@ -167,16 +167,18 @@
       id: r.id, title: r.title || "", notes: r.notes || "", categoryId: r.category_id || null,
       priority: Number(r.priority) || 2, due: r.due || null, done: !!r.done,
       doneAt: r.done_at ? Date.parse(r.done_at) : null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now(),
+      repeat: r.repeat || null,
     };
   }
   function taskToRow(t) {
     return {
       id: t.id, user_id: userId, title: t.title, notes: t.notes || "", category_id: t.categoryId || null,
       priority: Number(t.priority) || 2, due: t.due || null, done: !!t.done, done_at: toIso(t.doneAt), created_at: toIso(t.createdAt),
+      repeat: t.repeat || null,
     };
   }
   function patchToRow(p) {
-    const map = { title: "title", notes: "notes", categoryId: "category_id", priority: "priority", due: "due", done: "done" };
+    const map = { title: "title", notes: "notes", categoryId: "category_id", priority: "priority", due: "due", done: "done", repeat: "repeat" };
     const out = {};
     Object.keys(p).forEach((k) => {
       if (k === "doneAt") out.done_at = toIso(p.doneAt);
@@ -281,7 +283,7 @@
 
   // ---------- task & category actions ----------
   function addTask(data) {
-    const t = Object.assign({ id: uid("t"), notes: "", categoryId: null, priority: 2, due: null, done: false, doneAt: null, createdAt: Date.now() }, data);
+    const t = Object.assign({ id: uid("t"), notes: "", categoryId: null, priority: 2, due: null, done: false, doneAt: null, createdAt: Date.now(), repeat: null }, data);
     tasks = tasks.concat([t]); render();
     return run(sb.from("tasks").insert(taskToRow(t)));
   }
@@ -299,8 +301,58 @@
     tasks = tasks.filter((x) => ids.indexOf(x.id) === -1); render();
     return run(sb.from("tasks").delete().in("id", ids));
   }
+  // ---------- repeating tasks ----------
+  const REPEAT_LABEL = { daily: "DAILY", weekdays: "WEEKDAYS", weekly: "WEEKLY", biweekly: "EVERY 2 WEEKS", monthly: "MONTHLY", yearly: "YEARLY" };
+  function stepDate(d, rule, anchorDay) {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const addMonths = (n) => {
+      const day = anchorDay || x.getDate();
+      x.setDate(1); x.setMonth(x.getMonth() + n);
+      const last = new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate();
+      x.setDate(Math.min(day, last));
+    };
+    switch (rule) {
+      case "daily": x.setDate(x.getDate() + 1); break;
+      case "weekdays": do { x.setDate(x.getDate() + 1); } while (x.getDay() === 0 || x.getDay() === 6); break;
+      case "weekly": x.setDate(x.getDate() + 7); break;
+      case "biweekly": x.setDate(x.getDate() + 14); break;
+      case "monthly": addMonths(1); break;
+      case "yearly": addMonths(12); break;
+      default: x.setDate(x.getDate() + 1);
+    }
+    return x;
+  }
+  // Next due date after completing: the first occurrence after today (no pile-up of missed ones).
+  function nextDue(t) {
+    const today = parseYmd(dateStr(0));
+    const base = t.due ? parseYmd(t.due) : today;
+    const anchor = base.getDate();
+    let x = stepDate(base, t.repeat, anchor), guard = 0;
+    while (x <= today && guard++ < 2000) x = stepDate(x, t.repeat, anchor);
+    return ymd(x);
+  }
+  // Future occurrences of a repeating task between two dates (for the calendar).
+  function occurrences(t, fromStr, toStr) {
+    if (!t.repeat || !t.due || t.done) return [];
+    const out = []; const anchor = parseYmd(t.due).getDate();
+    let x = stepDate(parseYmd(t.due), t.repeat, anchor), guard = 0;
+    const to = parseYmd(toStr), from = parseYmd(fromStr);
+    while (x <= to && guard++ < 800) { if (x >= from) out.push(ymd(x)); x = stepDate(x, t.repeat, anchor); }
+    return out;
+  }
+
   function toggleDone(t) {
     const done = !t.done;
+    if (done && t.repeat) {
+      const next = Object.assign({}, t, { id: uid("t"), due: nextDue(t), done: false, doneAt: null, createdAt: Date.now() });
+      updateTask(t.id, { done: true, doneAt: Date.now(), repeat: null });
+      addTask(next);
+      toast("Done. Next one: " + shortDay(next.due), () => {
+        deleteTasks([next]);
+        updateTask(t.id, { done: false, doneAt: null, repeat: t.repeat });
+      });
+      return;
+    }
     updateTask(t.id, { done, doneAt: done ? Date.now() : null });
     if (done) toast("Done: " + clip(t.title, 40), () => updateTask(t.id, { done: false, doneAt: null }));
   }
@@ -390,6 +442,7 @@
     m.appendChild(el("span", "date " + dl.cls, dl.text));
     const c = catById(t.categoryId);
     if (c && !(opts && opts.hideCat)) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", null, c.name.toUpperCase())); }
+    if (t.repeat) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", "rep", "↻ " + (REPEAT_LABEL[t.repeat] || "REPEATS"))); }
     if (t.notes && opts && opts.noteFlag) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", null, "NOTES")); }
     return m;
   }
@@ -438,7 +491,7 @@
     body.appendChild(el("div", "t-title", top.title));
     const c = catById(top.categoryId);
     const dl = dateLabel(top);
-    body.appendChild(el("div", "meta", [dl.text, c ? c.name.toUpperCase() : null, PRI[Number(top.priority) || 2].toUpperCase()].filter(Boolean).join("  ·  ")));
+    body.appendChild(el("div", "meta", [dl.text, c ? c.name.toUpperCase() : null, PRI[Number(top.priority) || 2].toUpperCase(), top.repeat ? "↻ " + REPEAT_LABEL[top.repeat] : null].filter(Boolean).join("  ·  ")));
     body.addEventListener("click", () => openTaskEditor(top));
     const chk = el("button", "check"); chk.type = "button";
     chk.setAttribute("aria-label", "Mark done"); chk.innerHTML = ICONS.check;
@@ -525,6 +578,7 @@
   let calMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })();
   let selDay = dateStr(0);
   let dragId = null;
+  let lastGhosts = new Map();
   const calMatches = (t) => !calCat || (calCat === "none" ? !catById(t.categoryId) : t.categoryId === calCat);
   const byDoneThenUrgency = (arr) => sortTasks(arr.filter((t) => !t.done), "urgency").concat(arr.filter((t) => t.done));
 
@@ -576,6 +630,10 @@
     const narrow = window.matchMedia("(max-width: 600px)").matches;
     const maxPills = narrow ? 4 : 3;
 
+    const gridStart = ymd(new Date(y, m, 1 - offset)), gridEnd = ymd(new Date(y, m, weeks * 7 - offset));
+    const ghosts = new Map();
+    visible.forEach((t) => occurrences(t, gridStart, gridEnd).forEach((ds) => { if (!ghosts.has(ds)) ghosts.set(ds, []); ghosts.get(ds).push(t); }));
+    lastGhosts = ghosts;
     const grid = $("cal-grid"); grid.innerHTML = "";
     let monthCount = 0;
     for (let i = 0; i < weeks * 7; i++) {
@@ -601,7 +659,18 @@
         makeDraggable(pill, t.id);
         cell.appendChild(pill);
       });
-      if (list.length > maxPills) cell.appendChild(el("span", "more-n", "+" + (list.length - maxPills) + (narrow ? "" : " more")));
+      const gl = ghosts.get(ds) || [];
+      const room = Math.max(0, maxPills - Math.min(list.length, maxPills));
+      gl.slice(0, room).forEach((t) => {
+        const c = catById(t.categoryId);
+        const g = el("button", "pill ghost"); g.type = "button"; g.title = t.title + " (repeats)";
+        applyPair(g, c ? c.color : NO_CAT.sq);
+        g.appendChild(el("span", "ptext", "↻ " + t.title));
+        g.addEventListener("click", (e) => { e.stopPropagation(); if (narrow) selectDay(ds); else openTaskEditor(t); });
+        cell.appendChild(g);
+      });
+      const hidden = list.length + gl.length - Math.min(list.length, maxPills) - Math.min(gl.length, room);
+      if (hidden > 0) cell.appendChild(el("span", "more-n", "+" + hidden + (narrow ? "" : " more")));
       cell.addEventListener("click", () => selectDay(ds));
       makeDropTarget(cell, (id) => placeTask(id, ds));
       grid.appendChild(cell);
@@ -629,8 +698,17 @@
     const dayList = byDoneThenUrgency(byDay.get(ds) || []);
     $("dp-count").textContent = dayList.length ? String(dayList.length) : "";
     const ul = $("dp-list"); ul.innerHTML = "";
-    if (!dayList.length) ul.appendChild(el("li", "hint", "Nothing planned for this day yet."));
+    const dayGhosts = lastGhosts.get(ds) || [];
+    if (!dayList.length && !dayGhosts.length) ul.appendChild(el("li", "hint", "Nothing planned for this day yet."));
     dayList.forEach((t) => { const row = taskRow(t); makeDraggable(row, t.id); ul.appendChild(row); });
+    dayGhosts.forEach((t) => {
+      const li = el("li", "ghost-row");
+      const b = el("button", null); b.type = "button";
+      b.appendChild(el("span", "t", "↻ " + t.title));
+      b.appendChild(el("span", "when", "REPEATS " + (REPEAT_LABEL[t.repeat] || "")));
+      b.addEventListener("click", () => openTaskEditor(t));
+      li.appendChild(b); ul.appendChild(li);
+    });
 
     const us = $("us-list"); us.innerHTML = "";
     const sorted = sortTasks(unscheduled, "urgency");
@@ -706,6 +784,8 @@
     $("te-pri-" + (Number(t.priority) || 2)).checked = true;
     $("te-due").value = t.due || "";
     $("te-notes").value = t.notes || "";
+    $("te-repeat").value = t.repeat || "";
+    $("te-repeat-hint").hidden = !t.repeat;
     openOverlay("task-overlay", "te-title");
   }
   function openNewTask() {
@@ -721,6 +801,10 @@
   }
   $("btn-add").addEventListener("click", openNewTask);
   $("fab-add").addEventListener("click", openNewTask);
+  $("te-repeat").addEventListener("change", () => {
+    $("te-repeat-hint").hidden = !$("te-repeat").value;
+    if ($("te-repeat").value && !$("te-due").value) $("te-due").value = dateStr(0);
+  });
   document.querySelectorAll(".quick-dates button").forEach((b) => b.addEventListener("click", () => {
     $("te-due").value = b.dataset.off === "clear" ? "" : dateStr(Number(b.dataset.off));
   }));
@@ -735,7 +819,9 @@
       priority: Number((document.querySelector('input[name="te-pri"]:checked') || {}).value || 2),
       due: $("te-due").value || null,
       notes: $("te-notes").value.trim(),
+      repeat: $("te-repeat").value || null,
     };
+    if (patch.repeat && !patch.due) patch.due = dateStr(0);
     if (creating) {
       addTask(patch);
       toast("Added: " + clip(title, 40));

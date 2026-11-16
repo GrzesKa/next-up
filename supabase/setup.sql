@@ -23,6 +23,9 @@ create table if not exists public.tasks (
   created_at   timestamptz not null default now()
 );
 
+-- Repeating tasks (added later; safe to re-run)
+alter table public.tasks add column if not exists repeat text check (repeat in ('daily','weekdays','weekly','biweekly','monthly','yearly'));
+
 create index if not exists tasks_user_idx on public.tasks (user_id);
 create index if not exists categories_user_idx on public.categories (user_id);
 
