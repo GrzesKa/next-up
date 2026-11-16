@@ -4,12 +4,47 @@
 
   // ---------- constants ----------
   const CFG = window.NEXTUP_CONFIG || {};
-  const COLORS = ["#69A831", "#3B82C4", "#D0603F", "#8E5BC4", "#C49A1F", "#2FA39A", "#C43B7E", "#6B7A8F"];
+  // Category colour pairs: square colour (tile) + circle colour (count). Stored on the category as the square colour.
+  const PAIRS = [
+    { name: "Periwinkle & Apricot", sq: "#98A6EF", ci: "#F3C07E" },
+    { name: "Lime & Forest", sq: "#C9D865", ci: "#245441" },
+    { name: "Terracotta & Plum", sq: "#D96B4E", ci: "#6E1C3A" },
+    { name: "Slate & Ice", sq: "#41626F", ci: "#C5D7F2" },
+    { name: "Sage & Ochre", sq: "#B1C29E", ci: "#B58953" },
+    { name: "Pink & Butter", sq: "#E9AFC6", ci: "#F8DE8A" },
+    { name: "Pine & Orchid", sq: "#38504A", ci: "#E2A0D2" },
+    { name: "Peach & Tangerine", sq: "#F6CBBB", ci: "#F58A55" },
+    { name: "Ink & Sand", sq: "#2F3E66", ci: "#E9D8B0" },
+    { name: "Mustard & Brick", sq: "#E0B84A", ci: "#8C3B2E" },
+    { name: "Mint & Teal", sq: "#BFE3D0", ci: "#2F6F6A" },
+    { name: "Lilac & Aubergine", sq: "#C9B6E8", ci: "#4A2E5C" },
+  ];
+  const COLORS = PAIRS.map((p) => p.sq);
+  function lum(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+    if (!m) return 0.5;
+    const n = parseInt(m[1], 16);
+    const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  }
+  const inkOn = (hex) => (lum(hex) < 0.2 ? "#FFFFFF" : "#151514");
+  function pairFor(color) {
+    const p = PAIRS.find((x) => x.sq.toLowerCase() === String(color || "").toLowerCase());
+    const sq = p ? p.sq : (color || "#DEDAD2");
+    const ci = p ? p.ci : (lum(sq) < 0.2 ? "#F2F0EB" : "#151514");
+    return { sq, ci, sqInk: inkOn(sq), ciInk: inkOn(ci) };
+  }
+  function applyPair(node, color) {
+    const p = pairFor(color);
+    node.style.setProperty("--c", p.sq); node.style.setProperty("--c2", p.ci);
+    node.style.setProperty("--ct", p.sqInk); node.style.setProperty("--c2t", p.ciInk);
+  }
+  const NO_CAT = { sq: "#DEDAD2", ci: "#B4B1A8" };
   const PRI = { 3: "High", 2: "Medium", 1: "Low" };
   const DEFAULT_CATS = [
-    { name: "School", color: "#3B82C4" },
-    { name: "Personal projects", color: "#69A831" },
-    { name: "Personal", color: "#D0603F" },
+    { name: "School", color: "#98A6EF" },
+    { name: "Personal projects", color: "#C9D865" },
+    { name: "Personal", color: "#D96B4E" },
   ];
   const ICONS = {
     all: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M2.5 4h11M2.5 8h11M2.5 12h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
@@ -315,18 +350,21 @@
     const nv = $("nav-views"); nv.innerHTML = "";
     views.forEach((it) => nv.appendChild(navButton(it.v, it.name, it.icon, null, it.count, it.alert)));
     const nc = $("nav-cats"); nc.innerHTML = "";
-    cats.forEach((c) => nc.appendChild(navButton({ type: "cat", id: c.id }, c.name, null, c.color, open.filter((t) => t.categoryId === c.id).length)));
+    cats.forEach((c) => nc.appendChild(navButton({ type: "cat", id: c.id }, c.name, null, c.color, open.filter((t) => t.categoryId === c.id).length, false, true)));
     const orphan = open.filter((t) => !catById(t.categoryId)).length;
-    if (orphan > 0) nc.appendChild(navButton({ type: "cat", id: "none" }, "No category", null, "var(--muted)", orphan));
+    if (orphan > 0) nc.appendChild(navButton({ type: "cat", id: "none" }, "No category", null, "#DEDAD2", orphan, false, true));
+    $("cat-count").textContent = String(cats.length).padStart(2, "0") + (cats.length === 1 ? " LIST" : " LISTS");
+    $("brand-date").textContent = new Date().toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase() + " " + String(new Date().getDate()).padStart(2, "0") + "." + String(new Date().getMonth() + 1).padStart(2, "0");
   }
-  function navButton(v, name, icon, color, count, alert) {
-    const b = el("button", "nav-item"); b.type = "button";
+  function navButton(v, name, icon, color, count, alert, isCat) {
+    const b = el("button", "nav-item" + (isCat ? " cat" : "")); b.type = "button";
     const active = view.type === v.type && (v.type !== "cat" || view.id === v.id);
     b.setAttribute("aria-current", active ? "true" : "false");
     if (icon) b.insertAdjacentHTML("beforeend", icon);
-    if (color) { const d = el("span", "dot"); d.style.background = color; b.appendChild(d); }
+    if (color) { applyPair(b, color); b.appendChild(el("span", "dot")); }
     b.appendChild(el("span", "name", name));
-    if (count) b.appendChild(el("span", "count" + (alert ? " alert" : ""), String(count)));
+    if (isCat) b.appendChild(el("span", "count" + (count ? "" : " zero"), String(count)));
+    else if (count || v.type === "all" || v.type === "today" || v.type === "week") b.appendChild(el("span", "count" + (alert ? " alert" : "") + (count ? "" : " zero"), String(count)));
     b.addEventListener("click", () => { view = v; savePrefs(); render(); if (isPhone()) enterView(); });
     return b;
   }
@@ -336,55 +374,76 @@
     cats.forEach((c) => { const o = el("option", null, c.name); o.value = c.id; sel.appendChild(o); });
     sel.value = value && catById(value) ? value : "";
   }
-  function metaChips(t, opts) {
+  function dateLabel(t) {
+    const d = daysUntil(t.due);
+    if (d === null) return { text: "NO DATE", cls: "" };
+    const dt = parseYmd(t.due);
+    const short = dt.toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase() + " " + String(dt.getDate()).padStart(2, "0") + "." + String(dt.getMonth() + 1).padStart(2, "0");
+    if (d < 0) return { text: "OVERDUE " + (-d) + "D · " + short, cls: "over" };
+    if (d === 0) return { text: "TODAY", cls: "soon" };
+    if (d === 1) return { text: "TOMORROW", cls: "soon" };
+    return { text: short, cls: d <= 7 ? "soon" : "" };
+  }
+  function metaLine(t, opts) {
     const m = el("div", "meta");
+    const dl = dateLabel(t);
+    m.appendChild(el("span", "date " + dl.cls, dl.text));
     const c = catById(t.categoryId);
-    if (c && !(opts && opts.hideCat)) {
-      const ch = el("span", "chip"); const d = el("span", "dot"); d.style.background = c.color || COLORS[0];
-      ch.appendChild(d); ch.appendChild(document.createTextNode(c.name)); m.appendChild(ch);
-    }
-    const di = dueInfo(t.due);
-    if (di) m.appendChild(el("span", "chip " + di.cls, di.text));
-    const p = Number(t.priority) || 2;
-    const pc = el("span", "chip pri p" + p); pc.appendChild(el("span", "pdot p" + p)); pc.appendChild(document.createTextNode(PRI[p])); m.appendChild(pc);
-    if (t.notes && opts && opts.noteFlag) m.appendChild(el("span", "chip", "Notes"));
+    if (c && !(opts && opts.hideCat)) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", null, c.name.toUpperCase())); }
+    if (t.notes && opts && opts.noteFlag) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", null, "NOTES")); }
     return m;
   }
+  function prioBars(p) {
+    const s = el("span", "bars");
+    s.setAttribute("role", "img"); s.setAttribute("aria-label", PRI[p] + " priority");
+    for (let i = 1; i <= 3; i++) s.appendChild(el("span", i <= p ? "on" : null));
+    return s;
+  }
+  function dueShort(t) {
+    const d = daysUntil(t.due);
+    if (d !== null && d < 0) return "OVERDUE";
+    if (d === 0) return "DUE TODAY";
+    if (d === 1) return "DUE TOMORROW";
+    if (d !== null && d <= 7) return "DUE IN " + d + " DAYS";
+    if (Number(t.priority) === 3) return "HIGH PRIORITY";
+    return "TOP OF YOUR LIST";
+  }
+
   function taskRow(t) {
     const p = Number(t.priority) || 2;
-    const li = el("li", "task p" + p + (t.done ? " done" : ""));
+    const li = el("li", "task" + (t.done ? " done" : ""));
+    const c = catById(t.categoryId);
+    applyPair(li, c ? c.color : NO_CAT.sq);
+    if (!c) { li.style.setProperty("--c", NO_CAT.sq); li.style.setProperty("--c2", NO_CAT.ci); }
+    const bar = el("span", "cbar"); bar.setAttribute("aria-hidden", "true"); bar.appendChild(el("span"));
+    const body = el("button", "t-body"); body.type = "button";
+    body.setAttribute("aria-label", "Edit " + t.title);
+    body.appendChild(el("div", "t-title", t.title));
+    body.appendChild(metaLine(t, { hideCat: view.type === "cat", noteFlag: true }));
+    body.addEventListener("click", () => openTaskEditor(t));
     const chk = el("button", "check"); chk.type = "button";
     chk.setAttribute("aria-label", t.done ? "Mark as not done" : "Mark done");
     chk.innerHTML = ICONS.check;
     chk.addEventListener("click", () => toggleDone(t));
-    const body = el("button", "t-body"); body.type = "button";
-    body.setAttribute("aria-label", "Edit " + t.title);
-    body.appendChild(el("div", "t-title", t.title));
-    body.appendChild(metaChips(t, { hideCat: view.type === "cat", noteFlag: true }));
-    body.addEventListener("click", () => openTaskEditor(t));
-    const more = el("button", "icon-btn"); more.type = "button"; more.setAttribute("aria-label", "Edit task"); more.innerHTML = ICONS.edit;
-    more.addEventListener("click", () => openTaskEditor(t));
-    li.appendChild(chk); li.appendChild(body); li.appendChild(more);
+    li.appendChild(bar); li.appendChild(body); li.appendChild(prioBars(p)); li.appendChild(chk);
     return li;
   }
 
   // ---------- render: list views ----------
-  function nextCard(top) {
-    const p = Number(top.priority) || 2;
-    const card = el("div", "next-card p" + p);
+  function nextCard(top, big) {
+    const card = el("div", "next-card" + (big ? " big" : ""));
+    const body = el("button", "t-body"); body.type = "button";
+    body.setAttribute("aria-label", "Edit " + top.title);
+    body.appendChild(el("div", "label", "DO THIS NEXT  ·  " + dueShort(top)));
+    body.appendChild(el("div", "t-title", top.title));
+    const c = catById(top.categoryId);
+    const dl = dateLabel(top);
+    body.appendChild(el("div", "meta", [dl.text, c ? c.name.toUpperCase() : null, PRI[Number(top.priority) || 2].toUpperCase()].filter(Boolean).join("  ·  ")));
+    body.addEventListener("click", () => openTaskEditor(top));
     const chk = el("button", "check"); chk.type = "button";
     chk.setAttribute("aria-label", "Mark done"); chk.innerHTML = ICONS.check;
     chk.addEventListener("click", () => toggleDone(top));
-    const body = el("button", "t-body"); body.type = "button";
-    body.setAttribute("aria-label", "Edit " + top.title);
-    const lab = el("div", "label", "Do this next"); lab.appendChild(el("span", "why", whyUrgent(top)));
-    body.appendChild(lab);
-    body.appendChild(el("div", "t-title", top.title));
-    body.appendChild(metaChips(top, { hideCat: view.type === "cat", noteFlag: true }));
-    body.addEventListener("click", () => openTaskEditor(top));
-    const more = el("button", "icon-btn"); more.type = "button"; more.setAttribute("aria-label", "Edit task"); more.innerHTML = ICONS.edit;
-    more.addEventListener("click", () => openTaskEditor(top));
-    card.appendChild(chk); card.appendChild(body); card.appendChild(more);
+    card.appendChild(body); card.appendChild(chk);
     return card;
   }
   function renderHero(top, anyOpen) {
@@ -396,7 +455,7 @@
     const box = $("home-next"); box.innerHTML = "";
     if (!loaded) return;
     const top = sortTasks(tasks.filter((t) => !t.done), "urgency")[0];
-    if (top) box.appendChild(nextCard(top));
+    if (top) box.appendChild(nextCard(top, true));
   }
 
   function render() {
@@ -535,8 +594,8 @@
         const over = !t.done && daysUntil(t.due) < 0;
         const pill = el("button", "pill p" + p + (t.done ? " done" : "") + (over ? " over" : ""));
         pill.type = "button"; pill.title = t.title;
-        pill.style.setProperty("--c", c ? c.color : "var(--muted)");
-        if (c) { const dot = el("span", "dot"); dot.style.background = c.color; pill.appendChild(dot); }
+        applyPair(pill, c ? c.color : NO_CAT.sq);
+        pill.appendChild(el("span", "dot"));
         pill.appendChild(el("span", "ptext", t.title));
         pill.addEventListener("click", (e) => { e.stopPropagation(); if (narrow) selectDay(ds); else openTaskEditor(t); });
         makeDraggable(pill, t.id);
@@ -580,9 +639,10 @@
     const btnLabel = dd === 0 ? "Today" : dd === 1 ? "Tomorrow" : "Add to " + parseYmd(ds).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
     sorted.forEach((t) => {
       const p = Number(t.priority) || 2;
-      const li = el("li", "mini p" + p);
+      const li = el("li", "mini");
       const c = catById(t.categoryId);
-      if (c) { const dot = el("span", "dot"); dot.style.background = c.color; li.appendChild(dot); }
+      applyPair(li, c ? c.color : NO_CAT.sq);
+      li.appendChild(el("span", "dot"));
       const tb = el("button", "t", t.title); tb.type = "button"; tb.setAttribute("aria-label", "Edit " + t.title);
       tb.addEventListener("click", () => openTaskEditor(t));
       const place = el("button", "place", btnLabel); place.type = "button";
@@ -695,11 +755,14 @@
   let editingCat = null;
   function buildSwatches(selected) {
     const box = $("ce-colors"); box.innerHTML = "";
-    COLORS.forEach((col, i) => {
-      const inp = document.createElement("input"); inp.type = "radio"; inp.name = "ce-color"; inp.id = "ce-color-" + i; inp.value = col;
-      if (col === selected) inp.checked = true;
-      const lab = document.createElement("label"); lab.htmlFor = inp.id; lab.style.background = col;
-      lab.title = "Colour " + (i + 1); lab.setAttribute("aria-label", "Colour " + (i + 1));
+    const list = PAIRS.slice();
+    if (selected && !PAIRS.some((p) => p.sq.toLowerCase() === selected.toLowerCase())) list.unshift({ name: "Current colour", sq: selected, ci: pairFor(selected).ci });
+    list.forEach((p, i) => {
+      const inp = document.createElement("input"); inp.type = "radio"; inp.name = "ce-color"; inp.id = "ce-color-" + i; inp.value = p.sq;
+      if (selected && p.sq.toLowerCase() === selected.toLowerCase()) inp.checked = true;
+      const lab = document.createElement("label"); lab.htmlFor = inp.id;
+      lab.style.setProperty("--c", p.sq); lab.style.setProperty("--c2", p.ci);
+      lab.title = p.name; lab.setAttribute("aria-label", p.name);
       box.appendChild(inp); box.appendChild(lab);
     });
   }

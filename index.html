@@ -5,23 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Next Up</title>
 <meta name="description" content="My tasks by priority, with a calendar.">
-<meta name="theme-color" content="#69A831">
+<meta name="theme-color" content="#F2F0EB">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Next Up">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <section class="auth" id="auth" hidden>
   <form class="auth-card" id="auth-form" autocomplete="on" novalidate>
-    <div class="brand"><div class="brand-mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h1>Next Up</h1></div>
+    <div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" fill="#BFC63A"/><circle cx="60" cy="40" r="24" fill="#53152B"/></svg></div><h1>Next Up</h1></div>
     <h2 id="auth-title">Sign in</h2>
     <p id="auth-lead">Your tasks stay in sync between your laptop and your phone.</p>
     <div class="auth-msg" id="auth-msg" role="alert" hidden></div>
@@ -43,34 +44,35 @@
 
 <section class="auth" id="setup-needed" hidden>
   <div class="auth-card">
-    <div class="brand"><div class="brand-mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h1>Next Up</h1></div>
+    <div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" fill="#BFC63A"/><circle cx="60" cy="40" r="24" fill="#53152B"/></svg></div><h1>Next Up</h1></div>
     <h2>Almost there</h2>
     <p>Next Up isn't connected to its database yet. Put your Supabase project URL and publishable key into <code>config.js</code>, save it to GitHub, and reload this page.</p>
   </div>
 </section>
 
 <section class="auth" id="booting">
-  <div class="auth-card"><div class="brand"><div class="brand-mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h1>Next Up</h1></div><p>Loading…</p></div>
+  <div class="auth-card"><div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" fill="#BFC63A"/><circle cx="60" cy="40" r="24" fill="#53152B"/></svg></div><h1>Next Up</h1></div><p>Loading…</p></div>
 </section>
 
 <div class="app" id="app" hidden>
   <aside class="rail" aria-label="Views and categories">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" fill="#BFC63A"/><circle cx="60" cy="40" r="24" fill="#53152B"/></svg>
       </div>
       <h1>Next Up</h1>
+      <span class="brand-date" id="brand-date"></span>
     </div>
     <div class="home-next" id="home-next"></div>
     <div class="navs">
       <div>
-        <div class="nav-label">Views</div>
+        <div class="nav-label"><span>Views</span></div>
         <nav class="nav" id="nav-views"></nav>
       </div>
       <div class="cat-group">
-        <div class="nav-label">Categories</div>
+        <div class="nav-label"><span>Categories</span><span class="nav-count" id="cat-count"></span></div>
         <nav class="nav" id="nav-cats"></nav>
-        <button class="add-cat" id="btn-add-cat" type="button">+ New category</button>
+        <button class="add-cat" id="btn-add-cat" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>New category</button>
       </div>
     </div>
     <div class="status" id="status" role="status"><span class="led"></span><span id="status-text">Connecting…</span></div>
@@ -114,12 +116,7 @@
 
     <ul class="tasks" id="list"><li class="loading">Loading your tasks…</li></ul>
 
-    <div class="legend" aria-label="How urgency is ranked">
-      <span><span class="pdot p3"></span>High</span>
-      <span><span class="pdot p2"></span>Medium</span>
-      <span><span class="pdot p1"></span>Low</span>
-      <span>Urgency mixes priority with how close the due date is. Overdue and due-today tasks jump to the top.</span>
-    </div>
+    <p class="legend">Urgency mixes priority with how close the due date is. Overdue and due-today tasks rise to the top.</p>
     </div>
 
     <section id="cal-mode" hidden aria-label="Calendar">
