@@ -207,10 +207,20 @@
         <option value="daily">Every day</option>
         <option value="weekdays">Every weekday (Mon–Fri)</option>
         <option value="weekly">Every week</option>
+        <option value="days">On specific days…</option>
         <option value="biweekly">Every 2 weeks</option>
         <option value="monthly">Every month</option>
         <option value="yearly">Every year</option>
       </select>
+      <div class="weekday-pick" id="te-days" role="group" aria-label="Repeat on these days" hidden>
+        <input type="checkbox" id="te-day-1" value="1"><label for="te-day-1">Mon</label>
+        <input type="checkbox" id="te-day-2" value="2"><label for="te-day-2">Tue</label>
+        <input type="checkbox" id="te-day-3" value="3"><label for="te-day-3">Wed</label>
+        <input type="checkbox" id="te-day-4" value="4"><label for="te-day-4">Thu</label>
+        <input type="checkbox" id="te-day-5" value="5"><label for="te-day-5">Fri</label>
+        <input type="checkbox" id="te-day-6" value="6"><label for="te-day-6">Sat</label>
+        <input type="checkbox" id="te-day-0" value="0"><label for="te-day-0">Sun</label>
+      </div>
       <p class="field-hint" id="te-repeat-hint" hidden>When you tick it off, the next one appears with the next date.</p>
     </div>
     <div class="form-field">

@@ -303,6 +303,29 @@
   }
   // ---------- repeating tasks ----------
   const REPEAT_LABEL = { daily: "DAILY", weekdays: "WEEKDAYS", weekly: "WEEKLY", biweekly: "EVERY 2 WEEKS", monthly: "MONTHLY", yearly: "YEARLY" };
+  const DAY_SHORT = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+  function repeatDays(rule) {
+    if (!rule || rule.indexOf("days:") !== 0) return null;
+    const set = rule.slice(5).split(",").map(Number).filter((n) => n >= 0 && n <= 6);
+    return set.length ? set : null;
+  }
+  function repeatLabel(rule) {
+    const days = repeatDays(rule);
+    if (days) {
+      const ordered = WEEK_ORDER.filter((d) => days.indexOf(d) !== -1);
+      return ordered.length === 1 ? "EVERY " + DAY_SHORT[ordered[0]] : ordered.map((d) => DAY_SHORT[d]).join(", ");
+    }
+    return REPEAT_LABEL[rule] || "REPEATS";
+  }
+  // Move a date forward (same day allowed) to the first day that matches a day-of-week rule.
+  function alignToDays(dueStr, rule) {
+    const days = repeatDays(rule);
+    if (!days || !dueStr) return dueStr;
+    const x = parseYmd(dueStr);
+    for (let i = 0; i < 7 && days.indexOf(x.getDay()) === -1; i++) x.setDate(x.getDate() + 1);
+    return ymd(x);
+  }
   function stepDate(d, rule, anchorDay) {
     const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const addMonths = (n) => {
@@ -318,7 +341,11 @@
       case "biweekly": x.setDate(x.getDate() + 14); break;
       case "monthly": addMonths(1); break;
       case "yearly": addMonths(12); break;
-      default: x.setDate(x.getDate() + 1);
+      default: {
+        const days = repeatDays(rule);
+        x.setDate(x.getDate() + 1);
+        if (days) for (let i = 0; i < 7 && days.indexOf(x.getDay()) === -1; i++) x.setDate(x.getDate() + 1);
+      }
     }
     return x;
   }
@@ -442,7 +469,7 @@
     m.appendChild(el("span", "date " + dl.cls, dl.text));
     const c = catById(t.categoryId);
     if (c && !(opts && opts.hideCat)) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", null, c.name.toUpperCase())); }
-    if (t.repeat) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", "rep", "↻ " + (REPEAT_LABEL[t.repeat] || "REPEATS"))); }
+    if (t.repeat) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", "rep", "↻ " + repeatLabel(t.repeat))); }
     if (t.notes && opts && opts.noteFlag) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", null, "NOTES")); }
     return m;
   }
@@ -491,7 +518,7 @@
     body.appendChild(el("div", "t-title", top.title));
     const c = catById(top.categoryId);
     const dl = dateLabel(top);
-    body.appendChild(el("div", "meta", [dl.text, c ? c.name.toUpperCase() : null, PRI[Number(top.priority) || 2].toUpperCase(), top.repeat ? "↻ " + REPEAT_LABEL[top.repeat] : null].filter(Boolean).join("  ·  ")));
+    body.appendChild(el("div", "meta", [dl.text, c ? c.name.toUpperCase() : null, PRI[Number(top.priority) || 2].toUpperCase(), top.repeat ? "↻ " + repeatLabel(top.repeat) : null].filter(Boolean).join("  ·  ")));
     body.addEventListener("click", () => openTaskEditor(top));
     const chk = el("button", "check"); chk.type = "button";
     chk.setAttribute("aria-label", "Mark done"); chk.innerHTML = ICONS.check;
@@ -705,7 +732,7 @@
       const li = el("li", "ghost-row");
       const b = el("button", null); b.type = "button";
       b.appendChild(el("span", "t", "↻ " + t.title));
-      b.appendChild(el("span", "when", "REPEATS " + (REPEAT_LABEL[t.repeat] || "")));
+      b.appendChild(el("span", "when", "REPEATS " + repeatLabel(t.repeat)));
       b.addEventListener("click", () => openTaskEditor(t));
       li.appendChild(b); ul.appendChild(li);
     });
@@ -784,7 +811,10 @@
     $("te-pri-" + (Number(t.priority) || 2)).checked = true;
     $("te-due").value = t.due || "";
     $("te-notes").value = t.notes || "";
-    $("te-repeat").value = t.repeat || "";
+    const rd = repeatDays(t.repeat);
+    $("te-repeat").value = rd ? "days" : (t.repeat || "");
+    setDayPicks(rd || []);
+    $("te-days").hidden = !rd;
     $("te-repeat-hint").hidden = !t.repeat;
     openOverlay("task-overlay", "te-title");
   }
@@ -801,9 +831,24 @@
   }
   $("btn-add").addEventListener("click", openNewTask);
   $("fab-add").addEventListener("click", openNewTask);
+  function setDayPicks(days) {
+    document.querySelectorAll("#te-days input").forEach((inp) => { inp.checked = days.indexOf(Number(inp.value)) !== -1; });
+  }
+  function readRepeat() {
+    const v = $("te-repeat").value;
+    if (v !== "days") return v || null;
+    const picked = Array.from(document.querySelectorAll("#te-days input:checked")).map((i) => Number(i.value));
+    if (!picked.length) return "weekly";
+    return "days:" + picked.sort((a, b) => a - b).join(",");
+  }
   $("te-repeat").addEventListener("change", () => {
-    $("te-repeat-hint").hidden = !$("te-repeat").value;
-    if ($("te-repeat").value && !$("te-due").value) $("te-due").value = dateStr(0);
+    const v = $("te-repeat").value;
+    $("te-repeat-hint").hidden = !v;
+    $("te-days").hidden = v !== "days";
+    if (v && !$("te-due").value) $("te-due").value = dateStr(0);
+    if (v === "days" && !document.querySelector("#te-days input:checked")) {
+      setDayPicks([parseYmd($("te-due").value || dateStr(0)).getDay()]);
+    }
   });
   document.querySelectorAll(".quick-dates button").forEach((b) => b.addEventListener("click", () => {
     $("te-due").value = b.dataset.off === "clear" ? "" : dateStr(Number(b.dataset.off));
@@ -819,9 +864,10 @@
       priority: Number((document.querySelector('input[name="te-pri"]:checked') || {}).value || 2),
       due: $("te-due").value || null,
       notes: $("te-notes").value.trim(),
-      repeat: $("te-repeat").value || null,
+      repeat: readRepeat(),
     };
     if (patch.repeat && !patch.due) patch.due = dateStr(0);
+    if (repeatDays(patch.repeat)) patch.due = alignToDays(patch.due, patch.repeat);
     if (creating) {
       addTask(patch);
       toast("Added: " + clip(title, 40));
