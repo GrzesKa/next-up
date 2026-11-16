@@ -302,23 +302,48 @@
     return run(sb.from("tasks").delete().in("id", ids));
   }
   // ---------- repeating tasks ----------
-  const REPEAT_LABEL = { daily: "DAILY", weekdays: "WEEKDAYS", weekly: "WEEKLY", biweekly: "EVERY 2 WEEKS", monthly: "MONTHLY", yearly: "YEARLY" };
+  // Stored as "every:N:unit" or "every:N:week:d,d" (d = 0 Sun … 6 Sat). Older values are still understood.
   const DAY_SHORT = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  const DAY_NAME = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
-  function repeatDays(rule) {
-    if (!rule || rule.indexOf("days:") !== 0) return null;
-    const set = rule.slice(5).split(",").map(Number).filter((n) => n >= 0 && n <= 6);
-    return set.length ? set : null;
+  function parseRepeat(rule) {
+    if (!rule) return null;
+    const legacy = { daily: [1, "day"], weekdays: [1, "week", [1, 2, 3, 4, 5]], weekly: [1, "week"], biweekly: [2, "week"], monthly: [1, "month"], yearly: [1, "year"] };
+    if (legacy[rule]) { const l = legacy[rule]; return { n: l[0], unit: l[1], days: l[2] || null }; }
+    if (rule.indexOf("days:") === 0) return { n: 1, unit: "week", days: rule.slice(5).split(",").map(Number) };
+    const m = /^every:(\d+):(day|week|month|year)(?::([0-6](?:,[0-6])*))?$/.exec(rule);
+    if (!m) return null;
+    return { n: Math.max(1, Number(m[1])), unit: m[2], days: m[3] ? m[3].split(",").map(Number) : null };
   }
+  function buildRepeat(n, unit, days) {
+    if (!unit) return null;
+    return "every:" + n + ":" + unit + (unit === "week" && days && days.length ? ":" + days.slice().sort((a, b) => a - b).join(",") : "");
+  }
+  const orderDays = (days) => WEEK_ORDER.filter((d) => days.indexOf(d) !== -1);
   function repeatLabel(rule) {
-    const days = repeatDays(rule);
-    if (days) {
-      const ordered = WEEK_ORDER.filter((d) => days.indexOf(d) !== -1);
-      return ordered.length === 1 ? "EVERY " + DAY_SHORT[ordered[0]] : ordered.map((d) => DAY_SHORT[d]).join(", ");
+    const r = parseRepeat(rule);
+    if (!r) return "REPEATS";
+    const word = { day: ["DAILY", "DAYS"], week: ["WEEKLY", "WEEKS"], month: ["MONTHLY", "MONTHS"], year: ["YEARLY", "YEARS"] }[r.unit];
+    if (r.unit === "week" && r.days) {
+      const list = orderDays(r.days).map((d) => DAY_SHORT[d]).join(", ");
+      if (r.days.length === 5 && [1, 2, 3, 4, 5].every((d) => r.days.indexOf(d) !== -1) && r.n === 1) return "WEEKDAYS";
+      if (r.n === 1) return r.days.length === 1 ? "EVERY " + list : list;
+      return "EVERY " + r.n + " WKS · " + list;
     }
-    return REPEAT_LABEL[rule] || "REPEATS";
+    return r.n === 1 ? word[0] : "EVERY " + r.n + " " + word[1];
   }
-  // Move a date forward (same day allowed) to the first day that matches a day-of-week rule.
+  function repeatSentence(r) {
+    if (!r) return "";
+    const unit = r.n === 1 ? r.unit : r.unit + "s";
+    let s = "Repeats every " + (r.n === 1 ? "" : r.n + " ") + unit;
+    if (r.unit === "week" && r.days && r.days.length) {
+      const names = orderDays(r.days).map((d) => DAY_NAME[d]);
+      s += " on " + (names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0]);
+    }
+    return s + ". When you tick it off, the next one appears.";
+  }
+  function repeatDays(rule) { const r = parseRepeat(rule); return r && r.unit === "week" && r.days && r.days.length ? r.days : null; }
+  // Move a date forward (same day allowed) to the first chosen weekday.
   function alignToDays(dueStr, rule) {
     const days = repeatDays(rule);
     if (!days || !dueStr) return dueStr;
@@ -326,28 +351,27 @@
     for (let i = 0; i < 7 && days.indexOf(x.getDay()) === -1; i++) x.setDate(x.getDate() + 1);
     return ymd(x);
   }
+  const mondayOf = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
   function stepDate(d, rule, anchorDay) {
+    const r = parseRepeat(rule) || { n: 1, unit: "day", days: null };
     const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const addMonths = (n) => {
+    const addMonths = (k) => {
       const day = anchorDay || x.getDate();
-      x.setDate(1); x.setMonth(x.getMonth() + n);
+      x.setDate(1); x.setMonth(x.getMonth() + k);
       const last = new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate();
       x.setDate(Math.min(day, last));
     };
-    switch (rule) {
-      case "daily": x.setDate(x.getDate() + 1); break;
-      case "weekdays": do { x.setDate(x.getDate() + 1); } while (x.getDay() === 0 || x.getDay() === 6); break;
-      case "weekly": x.setDate(x.getDate() + 7); break;
-      case "biweekly": x.setDate(x.getDate() + 14); break;
-      case "monthly": addMonths(1); break;
-      case "yearly": addMonths(12); break;
-      default: {
-        const days = repeatDays(rule);
-        x.setDate(x.getDate() + 1);
-        if (days) for (let i = 0; i < 7 && days.indexOf(x.getDay()) === -1; i++) x.setDate(x.getDate() + 1);
-      }
-    }
-    return x;
+    if (r.unit === "day") { x.setDate(x.getDate() + r.n); return x; }
+    if (r.unit === "month") { addMonths(r.n); return x; }
+    if (r.unit === "year") { addMonths(12 * r.n); return x; }
+    if (!r.days || !r.days.length) { x.setDate(x.getDate() + 7 * r.n); return x; }
+    // week with chosen days: next chosen day later this week, else first chosen day N weeks on
+    const pos = (x.getDay() + 6) % 7;
+    const later = orderDays(r.days).map((dd) => (dd + 6) % 7).filter((p) => p > pos);
+    if (later.length) { x.setDate(x.getDate() + (later[0] - pos)); return x; }
+    const mon = mondayOf(x); mon.setDate(mon.getDate() + 7 * r.n);
+    mon.setDate(mon.getDate() + ((orderDays(r.days)[0] + 6) % 7));
+    return mon;
   }
   // Next due date after completing: the first occurrence after today (no pile-up of missed ones).
   function nextDue(t) {
@@ -355,7 +379,7 @@
     const base = t.due ? parseYmd(t.due) : today;
     const anchor = base.getDate();
     let x = stepDate(base, t.repeat, anchor), guard = 0;
-    while (x <= today && guard++ < 2000) x = stepDate(x, t.repeat, anchor);
+    while (x <= today && guard++ < 3000) x = stepDate(x, t.repeat, anchor);
     return ymd(x);
   }
   // Future occurrences of a repeating task between two dates (for the calendar).
@@ -811,11 +835,11 @@
     $("te-pri-" + (Number(t.priority) || 2)).checked = true;
     $("te-due").value = t.due || "";
     $("te-notes").value = t.notes || "";
-    const rd = repeatDays(t.repeat);
-    $("te-repeat").value = rd ? "days" : (t.repeat || "");
-    setDayPicks(rd || []);
-    $("te-days").hidden = !rd;
-    $("te-repeat-hint").hidden = !t.repeat;
+    const r = parseRepeat(t.repeat);
+    $("te-repeat-n").value = String(r ? Math.min(r.n, 12) : 1);
+    $("te-repeat-unit").value = r ? r.unit : "";
+    setDayPicks(r && r.unit === "week" ? (r.days || (t.due ? [parseYmd(t.due).getDay()] : [])) : []);
+    syncRepeatUi();
     openOverlay("task-overlay", "te-title");
   }
   function openNewTask() {
@@ -834,22 +858,30 @@
   function setDayPicks(days) {
     document.querySelectorAll("#te-days input").forEach((inp) => { inp.checked = days.indexOf(Number(inp.value)) !== -1; });
   }
+  function pickedDays() { return Array.from(document.querySelectorAll("#te-days input:checked")).map((i) => Number(i.value)); }
   function readRepeat() {
-    const v = $("te-repeat").value;
-    if (v !== "days") return v || null;
-    const picked = Array.from(document.querySelectorAll("#te-days input:checked")).map((i) => Number(i.value));
-    if (!picked.length) return "weekly";
-    return "days:" + picked.sort((a, b) => a - b).join(",");
+    const unit = $("te-repeat-unit").value;
+    return buildRepeat(Number($("te-repeat-n").value) || 1, unit, unit === "week" ? pickedDays() : null);
   }
-  $("te-repeat").addEventListener("change", () => {
-    const v = $("te-repeat").value;
-    $("te-repeat-hint").hidden = !v;
-    $("te-days").hidden = v !== "days";
-    if (v && !$("te-due").value) $("te-due").value = dateStr(0);
-    if (v === "days" && !document.querySelector("#te-days input:checked")) {
-      setDayPicks([parseYmd($("te-due").value || dateStr(0)).getDay()]);
-    }
+  function syncRepeatUi() {
+    const unit = $("te-repeat-unit").value;
+    const n = Number($("te-repeat-n").value) || 1;
+    $("te-every-word").hidden = !unit;
+    $("te-repeat-n").hidden = !unit;
+    $("te-days").hidden = unit !== "week";
+    Array.from($("te-repeat-unit").options).forEach((o) => { if (o.value) o.textContent = n === 1 ? o.value : o.value + "s"; });
+    const r = parseRepeat(readRepeat());
+    $("te-repeat-hint").hidden = !r;
+    $("te-repeat-hint").textContent = repeatSentence(r);
+  }
+  $("te-repeat-unit").addEventListener("change", () => {
+    const unit = $("te-repeat-unit").value;
+    if (unit && !$("te-due").value) $("te-due").value = dateStr(0);
+    if (unit === "week" && !pickedDays().length) setDayPicks([parseYmd($("te-due").value || dateStr(0)).getDay()]);
+    syncRepeatUi();
   });
+  $("te-repeat-n").addEventListener("change", syncRepeatUi);
+  document.querySelectorAll("#te-days input").forEach((inp) => inp.addEventListener("change", syncRepeatUi));
   document.querySelectorAll(".quick-dates button").forEach((b) => b.addEventListener("click", () => {
     $("te-due").value = b.dataset.off === "clear" ? "" : dateStr(Number(b.dataset.off));
   }));

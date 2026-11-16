@@ -26,7 +26,11 @@ create table if not exists public.tasks (
 -- Repeating tasks (added later; safe to re-run)
 alter table public.tasks add column if not exists repeat text;
 alter table public.tasks drop constraint if exists tasks_repeat_check;
-alter table public.tasks add constraint tasks_repeat_check check (repeat in ('daily','weekdays','weekly','biweekly','monthly','yearly') or repeat ~ '^days:[0-6](,[0-6]){0,6}$');
+alter table public.tasks add constraint tasks_repeat_check check (
+  repeat in ('daily','weekdays','weekly','biweekly','monthly','yearly')
+  or repeat ~ '^days:[0-6](,[0-6]){0,6}$'
+  or repeat ~ '^every:([1-9]|[1-9][0-9]):(day|week|month|year)(:[0-6](,[0-6]){0,6})?$'
+);
 
 create index if not exists tasks_user_idx on public.tasks (user_id);
 create index if not exists categories_user_idx on public.categories (user_id);

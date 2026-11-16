@@ -201,17 +201,18 @@
       </div>
     </div>
     <div class="form-field">
-      <label for="te-repeat">Repeat</label>
-      <select class="input" id="te-repeat">
-        <option value="">Never</option>
-        <option value="daily">Every day</option>
-        <option value="weekdays">Every weekday (Mon–Fri)</option>
-        <option value="weekly">Every week</option>
-        <option value="days">On specific days…</option>
-        <option value="biweekly">Every 2 weeks</option>
-        <option value="monthly">Every month</option>
-        <option value="yearly">Every year</option>
-      </select>
+      <span class="lbl" id="te-repeat-lbl">Repeat</span>
+      <div class="repeat-row" role="group" aria-labelledby="te-repeat-lbl">
+        <span class="every-word" id="te-every-word">Every</span>
+        <select class="input" id="te-repeat-n" aria-label="How often"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select>
+        <select class="input" id="te-repeat-unit" aria-label="Repeat unit">
+          <option value="">Doesn't repeat</option>
+          <option value="day">day</option>
+          <option value="week">week</option>
+          <option value="month">month</option>
+          <option value="year">year</option>
+        </select>
+      </div>
       <div class="weekday-pick" id="te-days" role="group" aria-label="Repeat on these days" hidden>
         <input type="checkbox" id="te-day-1" value="1"><label for="te-day-1">Mon</label>
         <input type="checkbox" id="te-day-2" value="2"><label for="te-day-2">Tue</label>
@@ -221,7 +222,7 @@
         <input type="checkbox" id="te-day-6" value="6"><label for="te-day-6">Sat</label>
         <input type="checkbox" id="te-day-0" value="0"><label for="te-day-0">Sun</label>
       </div>
-      <p class="field-hint" id="te-repeat-hint" hidden>When you tick it off, the next one appears with the next date.</p>
+      <p class="field-hint" id="te-repeat-hint" hidden></p>
     </div>
     <div class="form-field">
       <label for="te-notes">Notes</label>
