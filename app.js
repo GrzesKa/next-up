@@ -209,56 +209,143 @@
     if (fn) fn();
   });
 
-  // ---------- data access ----------
-  async function run(query, failMsg) {
-    let res;
-    try { res = await query; } catch (e) { res = { error: e }; }
-    if (res && res.error) {
-      console.error(res.error);
-      toast(failMsg || (navigator.onLine === false ? "You're offline, so that change wasn't saved." : "Couldn't save that change. Try again in a moment."));
-      loadAll(true);
-      return false;
-    }
+  // ---------- local copy + offline change queue ----------
+  // Every change is applied on screen at once, saved to this device, and queued.
+  // The queue is sent to Supabase in order whenever there is a connection; field-level
+  // updates mean edits made elsewhere to other fields of the same task are kept.
+  const LS = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+    del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+  };
+  const cacheKey = () => "nextup.cache." + userId;
+  const outboxKey = () => "nextup.outbox." + userId;
+  let outbox = [];
+  let flushing = false;
+  let needsReload = false;
+  let offlineSession = false;
+
+  function saveLocal() { if (userId && loaded) LS.set(cacheKey(), { cats, tasks, savedAt: Date.now() }); }
+  function loadLocal() {
+    const c = LS.get(cacheKey(), null);
+    if (!c) return false;
+    cats = Array.isArray(c.cats) ? c.cats : []; tasks = Array.isArray(c.tasks) ? c.tasks : [];
+    sortCats(); loaded = true;
     return true;
+  }
+  const isOffline = () => navigator.onLine === false;
+  function isRetryable(err) {
+    const m = String((err && (err.message || err.code || err)) || "");
+    return isOffline() || /fetch|network|load failed|timeout|offline|jwt|token|PGRST30/i.test(m) || (err && (err.status === 401 || err.status === 0));
+  }
+  function statusLine() {
+    if (!userId) return;
+    const n = outbox.length;
+    const waiting = n + (n === 1 ? " change" : " changes");
+    if (isOffline() || offlineSession) setStatus("warn", n ? "Offline · " + waiting + " waiting to sync" : "Offline · showing your saved copy");
+    else if (n) setStatus("", "Syncing " + waiting + "…");
+    else setStatus("ok", "Synced across your devices");
+  }
+  function execOp(op) {
+    const q = sb.from(op.table);
+    if (op.kind === "upsert") return q.upsert(op.rows);
+    if (op.kind === "update") return q.update(op.patch).eq("id", op.id);
+    if (op.kind === "delete") return q.delete().in("id", op.ids);
+    if (op.kind === "updateWhere") return q.update(op.patch).eq(op.field, op.value);
+    if (op.kind === "deleteWhere") return q.delete().eq(op.field, op.value);
+    return Promise.resolve({ error: null });
+  }
+  // Re-apply still-queued changes on top of freshly loaded data, so a reload never undoes them.
+  function applyOpLocal(op) {
+    const isTask = op.table === "tasks";
+    let arr = isTask ? tasks : cats;
+    if (op.kind === "upsert") {
+      op.rows.forEach((r) => {
+        const o = isTask ? taskFromRow(r) : catFromRow(r);
+        const i = arr.findIndex((x) => x.id === o.id);
+        arr = i === -1 ? arr.concat([o]) : arr.map((x, j) => (j === i ? o : x));
+      });
+    } else if (op.kind === "update") arr = arr.map((x) => (x.id === op.id ? Object.assign({}, x, op.local) : x));
+    else if (op.kind === "delete") arr = arr.filter((x) => op.ids.indexOf(x.id) === -1);
+    else if (op.kind === "updateWhere") arr = arr.map((x) => (x.categoryId === op.value ? Object.assign({}, x, op.local) : x));
+    else if (op.kind === "deleteWhere") arr = arr.filter((x) => x.categoryId !== op.value);
+    if (isTask) tasks = arr; else { cats = arr; sortCats(); }
+  }
+  function persistOutbox() { if (userId) LS.set(outboxKey(), outbox); }
+  function enqueue(op) {
+    outbox.push(op);
+    persistOutbox();
+    saveLocal();
+    if (isOffline() || offlineSession) needsReload = true;
+    statusLine();
+    flush();
+  }
+  async function flush() {
+    if (flushing || !sb || !userId || offlineSession || !outbox.length) { statusLine(); return; }
+    flushing = true;
+    statusLine();
+    while (outbox.length && !isOffline()) {
+      let res;
+      try { res = await execOp(outbox[0]); } catch (e) { res = { error: e }; }
+      if (res && res.error) {
+        if (isRetryable(res.error)) { needsReload = true; break; }
+        console.error(res.error);
+        toast("One change couldn't be saved and was skipped.");
+        outbox.shift(); persistOutbox(); needsReload = true;
+        continue;
+      }
+      outbox.shift(); persistOutbox();
+    }
+    flushing = false;
+    statusLine();
+    if (!outbox.length && needsReload) { needsReload = false; loadAll(true); }
   }
 
   async function loadAll(quiet) {
-    if (!userId) return;
+    if (!userId || offlineSession) return;
     if (!quiet && !loaded) setStatus("", "Loading your tasks…");
-    const [c, t] = await Promise.all([
-      sb.from("categories").select("*").order("position", { ascending: true }),
-      sb.from("tasks").select("*").order("created_at", { ascending: true }),
-    ]);
+    let c, t;
+    try {
+      [c, t] = await Promise.all([
+        sb.from("categories").select("*").order("position", { ascending: true }),
+        sb.from("tasks").select("*").order("created_at", { ascending: true }),
+      ]);
+    } catch (e) { c = { error: e }; t = { error: e }; }
     if (c.error || t.error) {
       console.error(c.error || t.error);
-      setStatus("warn", navigator.onLine === false ? "You're offline. Showing what was last loaded." : "Couldn't reach your tasks. Check your connection and reopen the app.");
-      if (!loaded) { loaded = true; render(); }
+      if (!loaded) loadLocal();
+      loaded = true;
+      if (isOffline() || isRetryable(c.error || t.error)) statusLine();
+      else setStatus("warn", "Couldn't reach your tasks. Showing your saved copy.");
+      render();
       return;
     }
     cats = c.data.map(catFromRow); sortCats();
     tasks = t.data.map(taskFromRow);
+    outbox.forEach(applyOpLocal);
     loaded = true;
-    if (!cats.length && !tasks.length && !seeding) await seedDefaults();
-    setStatus("ok", "Synced across your devices");
+    if (!cats.length && !tasks.length && !seeding && !outbox.length) seedDefaults();
+    saveLocal();
+    statusLine();
     render();
   }
 
-  async function seedDefaults() {
+  function seedDefaults() {
     seeding = true;
     const rows = DEFAULT_CATS.map((c, i) => ({ id: uid("c"), name: c.name, color: c.color, position: i }));
     cats = rows.slice();
     render();
-    await run(sb.from("categories").insert(rows.map(catToRow)), "Couldn't create the starter categories. Add your own with + New category.");
+    enqueue({ kind: "upsert", table: "categories", rows: rows.map(catToRow) });
   }
 
   function subscribe() {
+    if (offlineSession) return;
     if (channel) { sb.removeChannel(channel); channel = null; }
     channel = sb.channel("nextup-" + userId)
       .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, (p) => applyChange("task", p))
       .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, (p) => applyChange("cat", p))
       .subscribe((status) => {
-        if (status === "SUBSCRIBED" && loaded) setStatus("ok", "Synced across your devices");
-        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setStatus("warn", "Live updates paused. Your changes still save; reopen the app to refresh.");
+        if (status === "SUBSCRIBED" && loaded) statusLine();
       });
   }
 
@@ -278,6 +365,8 @@
       arr = i === -1 ? arr.concat([obj]) : arr.map((x, j) => (j === i ? obj : x));
     }
     if (isTask) tasks = arr; else { cats = arr; sortCats(); }
+    outbox.forEach((op) => { if (op.table === (isTask ? "tasks" : "categories")) applyOpLocal(op); });
+    saveLocal();
     render();
   }
 
@@ -285,21 +374,21 @@
   function addTask(data) {
     const t = Object.assign({ id: uid("t"), notes: "", categoryId: null, priority: 2, due: null, done: false, doneAt: null, createdAt: Date.now(), repeat: null }, data);
     tasks = tasks.concat([t]); render();
-    return run(sb.from("tasks").insert(taskToRow(t)));
+    enqueue({ kind: "upsert", table: "tasks", rows: [taskToRow(t)] });
   }
   function updateTask(id, patch) {
     tasks = tasks.map((x) => (x.id === id ? Object.assign({}, x, patch) : x)); render();
-    return run(sb.from("tasks").update(patchToRow(patch)).eq("id", id));
+    enqueue({ kind: "update", table: "tasks", id, patch: patchToRow(patch), local: patch });
   }
   function restoreTasks(list) {
     const ids = new Set(list.map((t) => t.id));
     tasks = tasks.filter((x) => !ids.has(x.id)).concat(list); render();
-    return run(sb.from("tasks").upsert(list.map(taskToRow)));
+    enqueue({ kind: "upsert", table: "tasks", rows: list.map(taskToRow) });
   }
   function deleteTasks(list) {
     const ids = list.map((t) => t.id);
     tasks = tasks.filter((x) => ids.indexOf(x.id) === -1); render();
-    return run(sb.from("tasks").delete().in("id", ids));
+    enqueue({ kind: "delete", table: "tasks", ids });
   }
   // ---------- repeating tasks ----------
   // Stored as "every:N:unit" or "every:N:week:d,d" (d = 0 Sun … 6 Sat). Older values are still understood.
@@ -416,21 +505,19 @@
     const i = cats.findIndex((x) => x.id === c.id);
     cats = i === -1 ? cats.concat([c]) : cats.map((x) => (x.id === c.id ? c : x));
     sortCats(); render();
-    return run(sb.from("categories").upsert(catToRow(c)));
+    enqueue({ kind: "upsert", table: "categories", rows: [catToRow(c)] });
   }
-  async function deleteCategory(c, withTasks) {
+  function deleteCategory(c, withTasks) {
     const inCat = tasks.filter((t) => t.categoryId === c.id);
     cats = cats.filter((x) => x.id !== c.id);
     if (withTasks) tasks = tasks.filter((t) => t.categoryId !== c.id);
     else tasks = tasks.map((t) => (t.categoryId === c.id ? Object.assign({}, t, { categoryId: null }) : t));
     render();
     if (inCat.length) {
-      const ok = withTasks
-        ? await run(sb.from("tasks").delete().eq("category_id", c.id))
-        : await run(sb.from("tasks").update({ category_id: null }).eq("category_id", c.id));
-      if (!ok) return;
+      if (withTasks) enqueue({ kind: "deleteWhere", table: "tasks", field: "category_id", value: c.id });
+      else enqueue({ kind: "updateWhere", table: "tasks", field: "category_id", value: c.id, patch: { category_id: null }, local: { categoryId: null } });
     }
-    await run(sb.from("categories").delete().eq("id", c.id));
+    enqueue({ kind: "delete", table: "categories", ids: [c.id] });
   }
   function placeTask(id, due) {
     const t = tasks.find((x) => x.id === id);
@@ -1046,21 +1133,49 @@
     closeOverlay("pw-overlay");
     toast("Password updated.");
   });
-  $("btn-signout").addEventListener("click", async () => { await sb.auth.signOut(); });
+  $("btn-signout").addEventListener("click", async () => {
+    if (outbox.length && !window.confirmSignOut) {
+      window.confirmSignOut = true;
+      toast(outbox.length + " change(s) haven't synced yet. Tap Sign out again to sign out anyway.");
+      setTimeout(() => { window.confirmSignOut = false; }, 6000);
+      return;
+    }
+    LS.del("nextup.lastUser");
+    if (userId) { LS.del(cacheKey()); LS.del(outboxKey()); }
+    outbox = [];
+    try { await sb.auth.signOut(); } catch (e) {}
+    applySession(null);
+  });
 
   async function applySession(session) {
-    const newId = session && session.user ? session.user.id : null;
-    if (authKnown && newId === userId) return;
+    let newId = session && session.user ? session.user.id : null;
+    let email = session && session.user ? session.user.email || "" : "";
+    const real = !!newId;
+    // Offline and Supabase could not confirm the sign-in: keep working from this device's saved copy.
+    if (!newId && isOffline()) {
+      const last = LS.get("nextup.lastUser", null);
+      if (last && last.id) { newId = last.id; email = last.email || ""; }
+    }
+    if (authKnown && newId === userId) {
+      if (real && offlineSession) { offlineSession = false; loadAll(true); subscribe(); }
+      flush();
+      return;
+    }
     authKnown = true;
     userId = newId;
+    offlineSession = !!newId && !real;
     if (channel) { sb.removeChannel(channel); channel = null; }
-    cats = []; tasks = []; loaded = false;
+    cats = []; tasks = []; loaded = false; outbox = [];
     if (!userId) { setAuthMode("signin"); showScreen("auth"); return; }
-    $("acct-email").textContent = session.user.email || "";
+    if (real) LS.set("nextup.lastUser", { id: userId, email });
+    outbox = LS.get(outboxKey(), []);
+    if (!Array.isArray(outbox)) outbox = [];
+    $("acct-email").textContent = email;
     showScreen("app");
+    loadLocal();
     render();
-    await loadAll();
-    subscribe();
+    statusLine();
+    if (!offlineSession) { await loadAll(loaded); subscribe(); flush(); }
   }
 
   // Refresh when the app comes back to the foreground (phones pause live updates in the background).
@@ -1069,16 +1184,29 @@
     if (!userId || document.hidden) return;
     if (Date.now() - lastRefresh < 3000) return;
     lastRefresh = Date.now();
+    if (offlineSession) { reconnect(); return; }
+    flush();
     loadAll(true);
     if (!channel || channel.state === "closed" || channel.state === "errored") subscribe();
   }
+  async function reconnect() {
+    if (!sb || isOffline()) return;
+    try {
+      const { data } = await sb.auth.getSession();
+      if (data && data.session) applySession(data.session);
+    } catch (e) {}
+  }
   document.addEventListener("visibilitychange", refreshSoon);
-  window.addEventListener("online", refreshSoon);
-  window.addEventListener("offline", () => { if (userId) setStatus("warn", "You're offline. Changes won't save until you're back online."); });
+  window.addEventListener("online", () => { lastRefresh = 0; refreshSoon(); });
+  window.addEventListener("offline", statusLine);
+  setInterval(() => { if (outbox.length && !isOffline()) { if (offlineSession) reconnect(); else flush(); } }, 30000);
   setInterval(() => { if (loaded) render(); }, 5 * 60 * 1000);
 
   // ---------- boot ----------
   function boot() {
+    if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+      navigator.serviceWorker.register("/sw.js").catch((e) => console.warn("Offline support unavailable", e));
+    }
     const ok = CFG.supabaseUrl && CFG.supabaseKey && !/YOUR_/.test(CFG.supabaseUrl + CFG.supabaseKey) && window.supabase && window.supabase.createClient;
     if (!ok) { showScreen("setup"); return; }
     sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, {
