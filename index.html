@@ -61,6 +61,7 @@
       </div>
       <h1>Next Up</h1>
     </div>
+    <div class="home-next" id="home-next"></div>
     <div class="navs">
       <div>
         <div class="nav-label">Views</div>
@@ -77,33 +78,21 @@
   </aside>
 
   <main id="main">
+    <button class="back" id="btn-back" type="button"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Lists</button>
     <div class="head">
       <div>
         <h2 id="view-title">All tasks</h2>
         <div class="sub" id="view-sub"></div>
       </div>
-      <button class="ghost" id="btn-edit-cat" type="button" hidden>Edit category</button>
+      <div class="head-actions">
+        <button class="ghost" id="btn-edit-cat" type="button" hidden>Edit category</button>
+        <button class="primary add-btn" id="btn-add" type="button"><span aria-hidden="true">+</span> Add task</button>
+      </div>
     </div>
 
     <div id="list-mode">
-    <form class="quick" id="quick" autocomplete="off">
-      <div class="quick-row">
-        <input type="text" id="q-title" placeholder="Add a task, then press Enter" aria-label="New task" maxlength="300">
-      </div>
-      <div class="quick-row">
-        <select class="field-sm" id="q-cat" aria-label="Category"></select>
-        <div class="seg" role="radiogroup" aria-label="Priority">
-          <input type="radio" name="q-pri" id="q-pri-3" value="3"><label for="q-pri-3"><span class="pdot p3"></span>High</label>
-          <input type="radio" name="q-pri" id="q-pri-2" value="2" checked><label for="q-pri-2"><span class="pdot p2"></span>Medium</label>
-          <input type="radio" name="q-pri" id="q-pri-1" value="1"><label for="q-pri-1"><span class="pdot p1"></span>Low</label>
-        </div>
-        <input type="date" class="field-sm" id="q-due" aria-label="Due date">
-        <span class="spacer"></span>
-        <button class="primary" type="submit" id="q-add">Add task</button>
-      </div>
-    </form>
 
-    <section id="hero-wrap" aria-label="Most urgent task"></section>
+    <section id="hero-wrap" aria-label="Do this next"></section>
 
     <div class="toolbar">
       <div class="left">
@@ -164,19 +153,8 @@
           <div>
             <h3 id="dp-heading">Day</h3>
             <div class="sub" id="dp-sub"></div>
+            <p class="day-hint">New tasks you add now get this date.</p>
           </div>
-          <form class="day-add" id="dp-form" autocomplete="off">
-            <input type="text" id="dp-title" placeholder="Add a task for this day" aria-label="New task for this day" maxlength="300">
-            <div class="quick-row">
-              <select class="field-sm" id="dp-cat" aria-label="Category"></select>
-              <div class="seg" role="radiogroup" aria-label="Priority">
-                <input type="radio" name="dp-pri" id="dp-pri-3" value="3"><label for="dp-pri-3"><span class="pdot p3"></span>High</label>
-                <input type="radio" name="dp-pri" id="dp-pri-2" value="2" checked><label for="dp-pri-2"><span class="pdot p2"></span>Med</label>
-                <input type="radio" name="dp-pri" id="dp-pri-1" value="1"><label for="dp-pri-1"><span class="pdot p1"></span>Low</label>
-              </div>
-              <button class="primary" type="submit">Add</button>
-            </div>
-          </form>
           <div>
             <div class="panel-h"><span>Planned this day</span><span id="dp-count"></span></div>
           </div>
@@ -190,6 +168,7 @@
       </div>
     </section>
   </main>
+  <button class="fab" id="fab-add" type="button" aria-label="Add task"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
 </div>
 
 <!-- Task editor -->
@@ -231,7 +210,7 @@
     <div class="sheet-actions">
       <button type="button" class="danger" id="te-delete">Delete task</button>
       <button type="button" class="ghost" id="te-cancel">Cancel</button>
-      <button type="submit" class="primary">Save</button>
+      <button type="submit" class="primary" id="te-save">Save</button>
     </div>
   </form>
 </div>

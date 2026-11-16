@@ -327,7 +327,7 @@
     if (color) { const d = el("span", "dot"); d.style.background = color; b.appendChild(d); }
     b.appendChild(el("span", "name", name));
     if (count) b.appendChild(el("span", "count" + (alert ? " alert" : ""), String(count)));
-    b.addEventListener("click", () => { view = v; savePrefs(); render(); if (window.innerWidth <= 820) $("main").scrollIntoView({ block: "start" }); });
+    b.addEventListener("click", () => { view = v; savePrefs(); render(); if (isPhone()) enterView(); });
     return b;
   }
   function renderCatSelect(sel, value) {
@@ -369,37 +369,41 @@
   }
 
   // ---------- render: list views ----------
+  function nextCard(top) {
+    const p = Number(top.priority) || 2;
+    const card = el("div", "next-card p" + p);
+    const chk = el("button", "check"); chk.type = "button";
+    chk.setAttribute("aria-label", "Mark done"); chk.innerHTML = ICONS.check;
+    chk.addEventListener("click", () => toggleDone(top));
+    const body = el("button", "t-body"); body.type = "button";
+    body.setAttribute("aria-label", "Edit " + top.title);
+    const lab = el("div", "label", "Do this next"); lab.appendChild(el("span", "why", whyUrgent(top)));
+    body.appendChild(lab);
+    body.appendChild(el("div", "t-title", top.title));
+    body.appendChild(metaChips(top, { hideCat: view.type === "cat", noteFlag: true }));
+    body.addEventListener("click", () => openTaskEditor(top));
+    const more = el("button", "icon-btn"); more.type = "button"; more.setAttribute("aria-label", "Edit task"); more.innerHTML = ICONS.edit;
+    more.addEventListener("click", () => openTaskEditor(top));
+    card.appendChild(chk); card.appendChild(body); card.appendChild(more);
+    return card;
+  }
   function renderHero(top, anyOpen) {
     const wrap = $("hero-wrap"); wrap.innerHTML = "";
-    if (!top) {
-      const h = el("div", "hero empty"); const box = el("div");
-      box.appendChild(el("div", "eyebrow", "Do this next"));
-      box.appendChild(el("h3", null, anyOpen ? "Nothing open here. Nice work." : "No open tasks yet."));
-      box.appendChild(el("p", "notes", "Add a task above. Give it a priority and a due date, and the most urgent one shows up here."));
-      h.appendChild(box); wrap.appendChild(h); return;
-    }
-    const p = Number(top.priority) || 2;
-    const h = el("article", "hero p" + p);
-    h.appendChild(el("div", "bar"));
-    const box = el("div");
-    const eb = el("div", "eyebrow", "Do this next");
-    eb.appendChild(el("span", "why", whyUrgent(top)));
-    box.appendChild(eb);
-    box.appendChild(el("h3", null, top.title));
-    if (top.notes) box.appendChild(el("p", "notes", top.notes));
-    box.appendChild(metaChips(top, { hideCat: view.type === "cat" }));
-    const act = el("div", "actions");
-    const done = el("button", "primary", "Mark done"); done.type = "button"; done.addEventListener("click", () => toggleDone(top));
-    const edit = el("button", "ghost", "Edit"); edit.type = "button"; edit.addEventListener("click", () => openTaskEditor(top));
-    act.appendChild(done); act.appendChild(edit); box.appendChild(act);
-    h.appendChild(box); wrap.appendChild(h);
+    if (top) { wrap.appendChild(nextCard(top)); return; }
+    wrap.appendChild(el("p", "next-empty", anyOpen ? "Nothing open here. Nice work." : "No open tasks yet. Tap + Add task to create one."));
+  }
+  function renderHomeNext() {
+    const box = $("home-next"); box.innerHTML = "";
+    if (!loaded) return;
+    const top = sortTasks(tasks.filter((t) => !t.done), "urgency")[0];
+    if (top) box.appendChild(nextCard(top));
   }
 
   function render() {
     if (!userId) return;
     if (view.type === "cat" && view.id !== "none" && !catById(view.id) && cats.length) view = { type: "all" };
     renderNav();
-    renderCatSelect($("q-cat"), view.type === "cat" && view.id !== "none" ? view.id : $("q-cat").value);
+    renderHomeNext();
 
     const c = view.type === "cat" ? catById(view.id) : null;
     const isCal = view.type === "calendar";
@@ -427,7 +431,8 @@
     renderHero(top, tasks.some((t) => !t.done));
     const rest = sortTasks(open.filter((t) => t !== top), sortBy);
     const labels = { urgency: "most urgent first", due: "soonest due first", priority: "highest priority first", newest: "newest first" };
-    $("list-title").textContent = (top ? "Then, " : "") + labels[sortBy];
+    $("list-title").textContent = top ? "Then, " + labels[sortBy] : labels[sortBy].charAt(0).toUpperCase() + labels[sortBy].slice(1);
+    document.querySelector("#list-mode .toolbar").hidden = !rest.length && !(showDone && done.length) && !done.length;
 
     const list = $("list"); list.innerHTML = "";
     rest.forEach((t) => list.appendChild(taskRow(t)));
@@ -437,6 +442,25 @@
     $("show-done").checked = showDone;
     $("sort").value = sortBy;
   }
+
+  // ---------- phone: home tiles and drill-in ----------
+  const isPhone = () => window.matchMedia("(max-width: 820px)").matches;
+  function enterView() {
+    if (!document.body.classList.contains("in-view")) {
+      document.body.classList.add("in-view");
+      try { history.pushState({ nextupView: 1 }, ""); } catch (e) {}
+    }
+    window.scrollTo(0, 0);
+  }
+  function leaveView() {
+    document.body.classList.remove("in-view");
+    render();
+    window.scrollTo(0, 0);
+  }
+  $("btn-back").addEventListener("click", () => {
+    if (history.state && history.state.nextupView) history.back(); else leaveView();
+  });
+  window.addEventListener("popstate", () => { if (document.body.classList.contains("in-view")) leaveView(); });
 
   // ---------- calendar ----------
   let calMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })();
@@ -474,8 +498,6 @@
     if (tasks.some((t) => !catById(t.categoryId))) { const o = el("option", null, "No category"); o.value = "none"; fsel.appendChild(o); }
     if (calCat && calCat !== "none" && !catById(calCat)) calCat = "";
     fsel.value = calCat;
-    const prevDp = $("dp-cat").value;
-    renderCatSelect($("dp-cat"), prevDp || (calCat && calCat !== "none" ? calCat : ""));
     $("cal-show-done").checked = showDone;
   }
 
@@ -544,7 +566,6 @@
     const dd = daysUntil(ds);
     $("dp-heading").textContent = parseYmd(ds).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
     $("dp-sub").textContent = dd === 0 ? "Today" : dd === 1 ? "Tomorrow" : dd === -1 ? "Yesterday" : dd < 0 ? (-dd) + " days ago" : "In " + dd + " days";
-    $("dp-title").placeholder = "Add a task for " + (dd === 0 ? "today" : dd === 1 ? "tomorrow" : shortDay(ds));
 
     const dayList = byDoneThenUrgency(byDay.get(ds) || []);
     $("dp-count").textContent = dayList.length ? String(dayList.length) : "";
@@ -577,34 +598,10 @@
   $("cal-prev").addEventListener("click", () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); renderCalendar(); });
   $("cal-next").addEventListener("click", () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); renderCalendar(); });
   $("cal-today").addEventListener("click", () => selectDay(dateStr(0)));
-  $("cal-cat").addEventListener("change", (e) => {
-    calCat = e.target.value; savePrefs();
-    renderCatSelect($("dp-cat"), calCat && calCat !== "none" ? calCat : "");
-    renderCalendar();
-  });
+  $("cal-cat").addEventListener("change", (e) => { calCat = e.target.value; savePrefs(); renderCalendar(); });
   $("cal-show-done").addEventListener("change", (e) => { showDone = e.target.checked; savePrefs(); renderCalendar(); });
-  $("dp-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const title = $("dp-title").value.trim();
-    if (!title || !userId) { $("dp-title").focus(); return; }
-    const pri = Number((document.querySelector('input[name="dp-pri"]:checked') || {}).value || 2);
-    addTask({ title, priority: pri, due: selDay, categoryId: $("dp-cat").value || null });
-    $("dp-title").value = "";
-    $("dp-pri-2").checked = true;
-    $("dp-title").focus();
-  });
 
   // ---------- list controls ----------
-  $("quick").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const title = $("q-title").value.trim();
-    if (!title || !userId) { $("q-title").focus(); return; }
-    const pri = Number((document.querySelector('input[name="q-pri"]:checked') || {}).value || 2);
-    addTask({ title, priority: pri, due: $("q-due").value || null, categoryId: $("q-cat").value || null });
-    $("q-title").value = ""; $("q-due").value = "";
-    $("q-pri-2").checked = true;
-    $("q-title").focus();
-  });
   $("sort").addEventListener("change", (e) => { sortBy = e.target.value; savePrefs(); render(); });
   $("show-done").addEventListener("change", (e) => { showDone = e.target.checked; savePrefs(); render(); });
   $("btn-clear-done").addEventListener("click", () => {
@@ -632,14 +629,18 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") document.querySelectorAll(".overlay.open").forEach((o) => { if (o.id !== "pw-overlay") closeOverlay(o.id); });
     if (e.key === "n" && userId && !e.metaKey && !e.ctrlKey && !e.altKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && !document.querySelector(".overlay.open")) {
-      e.preventDefault(); $(view.type === "calendar" ? "dp-title" : "q-title").focus();
+      e.preventDefault(); openNewTask();
     }
   });
 
   // Task editor
   let editing = null;
-  function openTaskEditor(t) {
-    editing = t;
+  let creating = false;
+  function openTaskEditor(t, isNew) {
+    editing = t; creating = !!isNew;
+    $("te-heading").textContent = creating ? "New task" : "Edit task";
+    $("te-save").textContent = creating ? "Add task" : "Save";
+    $("te-delete").hidden = creating;
     $("te-title").value = t.title || "";
     renderCatSelect($("te-cat"), t.categoryId);
     $("te-pri-" + (Number(t.priority) || 2)).checked = true;
@@ -647,6 +648,19 @@
     $("te-notes").value = t.notes || "";
     openOverlay("task-overlay", "te-title");
   }
+  function openNewTask() {
+    if (!userId) return;
+    const onHome = isPhone() && !document.body.classList.contains("in-view");
+    let categoryId = null, due = null;
+    if (!onHome) {
+      if (view.type === "cat" && view.id !== "none") categoryId = view.id;
+      if (view.type === "calendar") { due = selDay; if (calCat && calCat !== "none") categoryId = calCat; }
+      if (view.type === "today") due = dateStr(0);
+    }
+    openTaskEditor({ title: "", notes: "", categoryId, priority: 2, due }, true);
+  }
+  $("btn-add").addEventListener("click", openNewTask);
+  $("fab-add").addEventListener("click", openNewTask);
   document.querySelectorAll(".quick-dates button").forEach((b) => b.addEventListener("click", () => {
     $("te-due").value = b.dataset.off === "clear" ? "" : dateStr(Number(b.dataset.off));
   }));
@@ -662,13 +676,18 @@
       due: $("te-due").value || null,
       notes: $("te-notes").value.trim(),
     };
-    const changed = Object.keys(patch).some((k) => (editing[k] == null ? null : editing[k]) !== patch[k]);
-    if (changed) updateTask(editing.id, patch);
-    closeOverlay("task-overlay"); editing = null;
+    if (creating) {
+      addTask(patch);
+      toast("Added: " + clip(title, 40));
+    } else {
+      const changed = Object.keys(patch).some((k) => (editing[k] == null ? null : editing[k]) !== patch[k]);
+      if (changed) updateTask(editing.id, patch);
+    }
+    closeOverlay("task-overlay"); editing = null; creating = false;
   });
-  $("te-cancel").addEventListener("click", () => { closeOverlay("task-overlay"); editing = null; });
+  $("te-cancel").addEventListener("click", () => { closeOverlay("task-overlay"); editing = null; creating = false; });
   $("te-delete").addEventListener("click", () => {
-    if (!editing) return;
+    if (!editing || creating) return;
     const t = editing; editing = null; closeOverlay("task-overlay"); deleteTask(t);
   });
 
