@@ -50,6 +50,7 @@
     all: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M2.5 4h11M2.5 8h11M2.5 12h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     today: '<svg class="icon" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
     cal: '<svg class="icon" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 6.5h11" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="9.3" r=".9" fill="currentColor"/><circle cx="8" cy="9.3" r=".9" fill="currentColor"/><circle cx="10.5" cy="9.3" r=".9" fill="currentColor"/><circle cx="5.5" cy="11.6" r=".9" fill="currentColor"/></svg>',
+    cart: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M1.8 2.5h2l1.6 7.6h7l1.5-5.4H4.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.3" cy="13" r="1.1" fill="currentColor"/><circle cx="11.6" cy="13" r="1.1" fill="currentColor"/></svg>',
     week: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M3 12.5l3-4 3 2 4-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     check: '<svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.3 2.3 4.7-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     edit: '<svg viewBox="0 0 18 18" fill="none"><path d="M11.5 3.5l3 3L6 15H3v-3l8.5-8.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
@@ -62,6 +63,8 @@
   let channel = null;
   let cats = [];
   let tasks = [];
+  let shop = [];
+  let mem = [];
   let loaded = false;
   let seeding = false;
   const prefs = loadPrefs();
@@ -188,6 +191,9 @@
   }
   const catFromRow = (r) => ({ id: r.id, name: r.name || "", color: r.color || COLORS[0], position: Number(r.position) || 0 });
   const catToRow = (c) => ({ id: c.id, user_id: userId, name: c.name, color: c.color, position: c.position || 0 });
+  const shopFromRow = (r) => ({ id: r.id, name: r.name || "", aisle: r.aisle || "other", done: !!r.done, doneAt: r.done_at ? Date.parse(r.done_at) : null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now() });
+  const shopToRow = (i) => ({ id: i.id, user_id: userId, name: i.name, aisle: i.aisle || "other", done: !!i.done, done_at: toIso(i.doneAt), created_at: toIso(i.createdAt) });
+  const memFromRow = (r) => ({ id: r.id, word: r.word || "", aisle: r.aisle || "other" });
   const sortCats = () => { cats = cats.slice().sort((a, b) => a.position - b.position || a.name.localeCompare(b.name)); };
 
   // ---------- status & toast ----------
@@ -225,11 +231,12 @@
   let needsReload = false;
   let offlineSession = false;
 
-  function saveLocal() { if (userId && loaded) LS.set(cacheKey(), { cats, tasks, savedAt: Date.now() }); }
+  function saveLocal() { if (userId && loaded) LS.set(cacheKey(), { cats, tasks, shop, mem, savedAt: Date.now() }); }
   function loadLocal() {
     const c = LS.get(cacheKey(), null);
     if (!c) return false;
     cats = Array.isArray(c.cats) ? c.cats : []; tasks = Array.isArray(c.tasks) ? c.tasks : [];
+    shop = Array.isArray(c.shop) ? c.shop : []; mem = Array.isArray(c.mem) ? c.mem : [];
     sortCats(); loaded = true;
     return true;
   }
@@ -256,20 +263,28 @@
     return Promise.resolve({ error: null });
   }
   // Re-apply still-queued changes on top of freshly loaded data, so a reload never undoes them.
+  const TABLES = {
+    tasks: { get: () => tasks, set: (a) => { tasks = a; }, from: (r) => taskFromRow(r) },
+    categories: { get: () => cats, set: (a) => { cats = a; sortCats(); }, from: (r) => catFromRow(r) },
+    shopping_items: { get: () => shop, set: (a) => { shop = a; }, from: (r) => shopFromRow(r) },
+    shopping_memory: { get: () => mem, set: (a) => { mem = a; }, from: (r) => memFromRow(r) },
+  };
   function applyOpLocal(op) {
-    const isTask = op.table === "tasks";
-    let arr = isTask ? tasks : cats;
+    const T = TABLES[op.table];
+    if (!T) return;
+    let arr = T.get();
+    const field = op.localField || "categoryId";
     if (op.kind === "upsert") {
       op.rows.forEach((r) => {
-        const o = isTask ? taskFromRow(r) : catFromRow(r);
+        const o = T.from(r);
         const i = arr.findIndex((x) => x.id === o.id);
         arr = i === -1 ? arr.concat([o]) : arr.map((x, j) => (j === i ? o : x));
       });
     } else if (op.kind === "update") arr = arr.map((x) => (x.id === op.id ? Object.assign({}, x, op.local) : x));
     else if (op.kind === "delete") arr = arr.filter((x) => op.ids.indexOf(x.id) === -1);
-    else if (op.kind === "updateWhere") arr = arr.map((x) => (x.categoryId === op.value ? Object.assign({}, x, op.local) : x));
-    else if (op.kind === "deleteWhere") arr = arr.filter((x) => x.categoryId !== op.value);
-    if (isTask) tasks = arr; else { cats = arr; sortCats(); }
+    else if (op.kind === "updateWhere") arr = arr.map((x) => (x[field] === op.value ? Object.assign({}, x, op.local) : x));
+    else if (op.kind === "deleteWhere") arr = arr.filter((x) => x[field] !== op.value);
+    T.set(arr);
   }
   function persistOutbox() { if (userId) LS.set(outboxKey(), outbox); }
   function enqueue(op) {
@@ -304,11 +319,13 @@
   async function loadAll(quiet) {
     if (!userId || offlineSession) return;
     if (!quiet && !loaded) setStatus("", "Loading your tasks…");
-    let c, t;
+    let c, t, si, sm;
     try {
-      [c, t] = await Promise.all([
+      [c, t, si, sm] = await Promise.all([
         sb.from("categories").select("*").order("position", { ascending: true }),
         sb.from("tasks").select("*").order("created_at", { ascending: true }),
+        sb.from("shopping_items").select("*").order("created_at", { ascending: true }),
+        sb.from("shopping_memory").select("*"),
       ]);
     } catch (e) { c = { error: e }; t = { error: e }; }
     if (c.error || t.error) {
@@ -322,6 +339,8 @@
     }
     cats = c.data.map(catFromRow); sortCats();
     tasks = t.data.map(taskFromRow);
+    if (si && !si.error) shop = si.data.map(shopFromRow);
+    if (sm && !sm.error) mem = sm.data.map(memFromRow);
     outbox.forEach(applyOpLocal);
     loaded = true;
     if (!cats.length && !tasks.length && !seeding && !outbox.length) seedDefaults();
@@ -342,17 +361,20 @@
     if (offlineSession) return;
     if (channel) { sb.removeChannel(channel); channel = null; }
     channel = sb.channel("nextup-" + userId)
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, (p) => applyChange("task", p))
-      .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, (p) => applyChange("cat", p))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, (p) => applyChange("tasks", p))
+      .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, (p) => applyChange("categories", p))
+      .on("postgres_changes", { event: "*", schema: "public", table: "shopping_items" }, (p) => applyChange("shopping_items", p))
+      .on("postgres_changes", { event: "*", schema: "public", table: "shopping_memory" }, (p) => applyChange("shopping_memory", p))
       .subscribe((status) => {
         if (status === "SUBSCRIBED" && loaded) statusLine();
       });
   }
 
-  function applyChange(kind, p) {
+  function applyChange(table, p) {
     if (!loaded) return;
-    const isTask = kind === "task";
-    let arr = isTask ? tasks : cats;
+    const T = TABLES[table];
+    if (!T) return;
+    let arr = T.get();
     if (p.eventType === "DELETE") {
       const id = p.old && p.old.id;
       if (!id) return;
@@ -360,12 +382,12 @@
     } else {
       const row = p.new || {};
       if (row.user_id && row.user_id !== userId) return;
-      const obj = isTask ? taskFromRow(row) : catFromRow(row);
+      const obj = T.from(row);
       const i = arr.findIndex((x) => x.id === obj.id);
       arr = i === -1 ? arr.concat([obj]) : arr.map((x, j) => (j === i ? obj : x));
     }
-    if (isTask) tasks = arr; else { cats = arr; sortCats(); }
-    outbox.forEach((op) => { if (op.table === (isTask ? "tasks" : "categories")) applyOpLocal(op); });
+    T.set(arr);
+    outbox.forEach((op) => { if (op.table === table) applyOpLocal(op); });
     saveLocal();
     render();
   }
@@ -536,6 +558,7 @@
       { v: { type: "today" }, name: "Today", icon: ICONS.today, count: open.filter((t) => inView(t, { type: "today" })).length, alert: overdue > 0 },
       { v: { type: "week" }, name: "Next 7 days", icon: ICONS.week, count: open.filter((t) => inView(t, { type: "week" })).length },
       { v: { type: "calendar" }, name: "Calendar", icon: ICONS.cal, count: 0 },
+      { v: { type: "shopping" }, name: "Shopping", icon: ICONS.cart, count: shop.filter((i) => !i.done).length },
     ];
     const nv = $("nav-views"); nv.innerHTML = "";
     views.forEach((it) => nv.appendChild(navButton(it.v, it.name, it.icon, null, it.count, it.alert)));
@@ -554,7 +577,7 @@
     if (color) { applyPair(b, color); b.appendChild(el("span", "dot")); }
     b.appendChild(el("span", "name", name));
     if (isCat) b.appendChild(el("span", "count" + (count ? "" : " zero"), String(count)));
-    else if (count || v.type === "all" || v.type === "today" || v.type === "week") b.appendChild(el("span", "count" + (alert ? " alert" : "") + (count ? "" : " zero"), String(count)));
+    else if (count || v.type === "all" || v.type === "today" || v.type === "week" || v.type === "shopping") b.appendChild(el("span", "count" + (alert ? " alert" : "") + (count ? "" : " zero"), String(count)));
     b.addEventListener("click", () => { view = v; savePrefs(); render(); if (isPhone()) enterView(); });
     return b;
   }
@@ -657,14 +680,18 @@
 
     const c = view.type === "cat" ? catById(view.id) : null;
     const isCal = view.type === "calendar";
-    $("view-title").textContent = isCal ? "Calendar" : view.type === "today" ? "Today" : view.type === "week" ? "Next 7 days" : view.type === "cat" ? (c ? c.name : "No category") : "All tasks";
+    const isShop = view.type === "shopping";
+    $("view-title").textContent = isShop ? "Shopping" : isCal ? "Calendar" : view.type === "today" ? "Today" : view.type === "week" ? "Next 7 days" : view.type === "cat" ? (c ? c.name : "No category") : "All tasks";
     $("btn-edit-cat").hidden = !c;
-    $("list-mode").hidden = isCal;
+    $("list-mode").hidden = isCal || isShop;
     $("cal-mode").hidden = !isCal;
+    $("shop-mode").hidden = !isShop;
+    $("btn-add").hidden = isShop;
     $("main").classList.toggle("wide", isCal);
 
     if (!loaded) { $("list").innerHTML = '<li class="loading">Loading your tasks…</li>'; return; }
     if (isCal) { renderCalendar(); return; }
+    if (isShop) { renderShopping(); return; }
 
     const scoped = tasks.filter((t) => inView(t, view));
     const open = scoped.filter((t) => !t.done);
@@ -692,6 +719,198 @@
     $("show-done").checked = showDone;
     $("sort").value = sortBy;
   }
+
+  // ---------- shopping list ----------
+  const G = window.NEXTUP_GROCERY || { aisles: [{ key: "other", name: "Other", sq: "#DEDAD2", ci: "#9C9990" }], phrases: {}, words: {} };
+  const AISLES = G.aisles;
+  const aisleBy = (k) => AISLES.find((a) => a.key === k) || AISLES[AISLES.length - 1];
+  const normGrocery = (s) => String(s || "").toLowerCase().replace(/ł/g, "l").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  const QTY = /^(\d+([.,]\d+)?(x|g|kg|dag|ml|l|szt|pcs)?|x|kg|g|dag|ml|l|szt|pcs|opak|pack|op)$/;
+  const EXACT = {}, PREFIX = [], PHRASES = [];
+  Object.keys(G.phrases || {}).forEach((ph) => PHRASES.push([normGrocery(ph), G.phrases[ph]]));
+  Object.keys(G.words || {}).forEach((aisle) => {
+    G.words[aisle].split("|").forEach((w) => {
+      const k = normGrocery(w);
+      if (!k) return;
+      if (k.indexOf(" ") !== -1) { PHRASES.push([k, aisle]); return; }
+      if (!EXACT[k]) EXACT[k] = aisle;
+      if (k.length >= 4) PREFIX.push([k, aisle]);
+    });
+  });
+  PHRASES.sort((a, b) => b[0].length - a[0].length);
+  function matchWord(w) {
+    if (EXACT[w]) return EXACT[w];
+    let best = null, len = 0;
+    PREFIX.forEach(([k, a]) => { if (k.length > len && w.indexOf(k) === 0) { best = a; len = k.length; } });
+    return best;
+  }
+  function classify(name) {
+    const n = normGrocery(name);
+    if (!n) return "other";
+    const memMap = {};
+    mem.forEach((m) => { memMap[m.word] = m.aisle; });
+    const toks = n.split(" ").filter((w) => !QTY.test(w));
+    const core = toks.join(" ");
+    if (memMap[n]) return memMap[n];
+    if (memMap[core]) return memMap[core];
+    for (let i = 0; i < PHRASES.length; i++) if ((" " + core + " ").indexOf(" " + PHRASES[i][0] + " ") !== -1) return PHRASES[i][1];
+    for (let i = toks.length - 1; i >= 0; i--) { const a = matchWord(toks[i]); if (a) return a; }
+    return "other";
+  }
+  const pretty = (s) => { const t = s.trim().replace(/\s+/g, " "); return t.charAt(0).toUpperCase() + t.slice(1); };
+
+  function addShopItems(text) {
+    const names = String(text || "").split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
+    if (!names.length) return;
+    const openNames = new Set(shop.filter((i) => !i.done).map((i) => normGrocery(i.name)));
+    const added = [], skipped = [], fresh = [];
+    const now = Date.now();
+    names.forEach((nm, k) => {
+      const key = normGrocery(nm);
+      if (!key || openNames.has(key)) { skipped.push(nm); return; }
+      openNames.add(key);
+      const basketItem = shop.find((i) => i.done && normGrocery(i.name) === key);
+      if (basketItem) { updateShop(basketItem.id, { done: false, doneAt: null }); added.push(basketItem); return; }
+      const item = { id: uid("s"), name: pretty(nm), aisle: classify(nm), done: false, doneAt: null, createdAt: now + k };
+      fresh.push(item); added.push(item);
+    });
+    if (fresh.length) { shop = shop.concat(fresh); render(); enqueue({ kind: "upsert", table: "shopping_items", rows: fresh.map(shopToRow) }); }
+    if (added.length === 1) toast(added[0].name + " → " + aisleBy(added[0].aisle).name);
+    else if (added.length > 1) toast("Added " + added.length + " items");
+    else if (skipped.length) toast("Already on your list");
+  }
+  function updateShop(id, patch) {
+    shop = shop.map((x) => (x.id === id ? Object.assign({}, x, patch) : x)); render();
+    const row = {};
+    if ("name" in patch) row.name = patch.name;
+    if ("aisle" in patch) row.aisle = patch.aisle;
+    if ("done" in patch) row.done = patch.done;
+    if ("doneAt" in patch) row.done_at = toIso(patch.doneAt);
+    enqueue({ kind: "update", table: "shopping_items", id, patch: row, local: patch });
+  }
+  function deleteShop(list) {
+    const ids = list.map((i) => i.id);
+    shop = shop.filter((x) => ids.indexOf(x.id) === -1); render();
+    enqueue({ kind: "delete", table: "shopping_items", ids });
+  }
+  function restoreShop(list) {
+    const ids = new Set(list.map((i) => i.id));
+    shop = shop.filter((x) => !ids.has(x.id)).concat(list); render();
+    enqueue({ kind: "upsert", table: "shopping_items", rows: list.map(shopToRow) });
+  }
+  function rememberAisle(name, aisle) {
+    const word = normGrocery(name).split(" ").filter((w) => !QTY.test(w)).join(" ");
+    if (!word) return;
+    const row = { id: userId + ":" + word.slice(0, 180), user_id: userId, word, aisle, updated_at: new Date().toISOString() };
+    const i = mem.findIndex((m) => m.id === row.id);
+    const obj = memFromRow(row);
+    mem = i === -1 ? mem.concat([obj]) : mem.map((m, j) => (j === i ? obj : m));
+    enqueue({ kind: "upsert", table: "shopping_memory", rows: [row] });
+  }
+  function toggleShop(item) {
+    const done = !item.done;
+    updateShop(item.id, { done, doneAt: done ? Date.now() : null });
+  }
+
+  function aisleIcon(a) {
+    const s = el("span", "aisle-icon"); s.setAttribute("aria-hidden", "true");
+    s.style.setProperty("--c", a.sq); s.style.setProperty("--c2", a.ci);
+    return s;
+  }
+  function shopRow(item) {
+    const li = el("li", "shop-item" + (item.done ? " done" : ""));
+    const chk = el("button", "check"); chk.type = "button";
+    chk.setAttribute("aria-label", item.done ? "Take " + item.name + " out of the basket" : "Put " + item.name + " in the basket");
+    chk.innerHTML = ICONS.check;
+    chk.addEventListener("click", () => toggleShop(item));
+    const nm = el("button", "shop-name", item.name); nm.type = "button";
+    nm.setAttribute("aria-label", "Edit " + item.name);
+    nm.addEventListener("click", () => openShopEditor(item));
+    li.appendChild(chk); li.appendChild(nm);
+    return li;
+  }
+  function renderShopping() {
+    const open = shop.filter((i) => !i.done);
+    const basket = shop.filter((i) => i.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    $("view-sub").textContent = open.length + " to buy · " + basket.length + " in basket";
+    const groups = $("shop-groups"); groups.innerHTML = "";
+    if (!open.length) groups.appendChild(el("p", "next-empty", basket.length ? "Everything's in the basket." : "Your list is empty. Type what you need above."));
+    AISLES.forEach((a) => {
+      const items = open.filter((i) => (aisleBy(i.aisle).key) === a.key).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+      if (!items.length) return;
+      const sec = el("section", "aisle-group");
+      const h = el("div", "aisle-head");
+      h.appendChild(aisleIcon(a));
+      h.appendChild(el("h3", null, a.name));
+      h.appendChild(el("span", "aisle-count", String(items.length)));
+      sec.appendChild(h);
+      const ul = el("ul", "shop-list");
+      items.forEach((i) => ul.appendChild(shopRow(i)));
+      sec.appendChild(ul);
+      groups.appendChild(sec);
+    });
+    const bk = $("shop-basket"); bk.innerHTML = "";
+    if (basket.length) {
+      const h = el("div", "basket-head");
+      h.appendChild(el("span", null, "IN BASKET · " + basket.length));
+      const clr = el("button", "link", "Clear basket"); clr.type = "button";
+      clr.addEventListener("click", () => {
+        const copies = basket.map((i) => Object.assign({}, i));
+        deleteShop(basket);
+        toast("Cleared " + copies.length + (copies.length === 1 ? " item" : " items"), () => restoreShop(copies));
+      });
+      h.appendChild(clr);
+      bk.appendChild(h);
+      const ul = el("ul", "shop-list basket");
+      basket.forEach((i) => ul.appendChild(shopRow(i)));
+      bk.appendChild(ul);
+    }
+  }
+  $("shop-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!userId) return;
+    addShopItems($("shop-input").value);
+    $("shop-input").value = "";
+    $("shop-input").focus();
+  });
+
+  let editingShop = null;
+  function openShopEditor(item) {
+    editingShop = item;
+    $("si-heading").textContent = item.name;
+    $("si-name").value = item.name;
+    const box = $("si-aisles"); box.innerHTML = "";
+    AISLES.forEach((a, i) => {
+      const inp = document.createElement("input"); inp.type = "radio"; inp.name = "si-aisle"; inp.id = "si-aisle-" + i; inp.value = a.key;
+      if (aisleBy(item.aisle).key === a.key) inp.checked = true;
+      const lab = document.createElement("label"); lab.htmlFor = inp.id;
+      lab.appendChild(aisleIcon(a)); lab.appendChild(el("span", null, a.name));
+      box.appendChild(inp); box.appendChild(lab);
+    });
+    openOverlay("shop-overlay", "si-name");
+  }
+  $("shop-item-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!editingShop) return;
+    const name = $("si-name").value.trim();
+    if (!name) { $("si-name").focus(); return; }
+    const aisle = (document.querySelector('input[name="si-aisle"]:checked') || {}).value || editingShop.aisle;
+    const patch = {};
+    if (name !== editingShop.name) patch.name = name;
+    if (aisle !== editingShop.aisle) patch.aisle = aisle;
+    if (Object.keys(patch).length) updateShop(editingShop.id, patch);
+    if (aisle !== editingShop.aisle) { rememberAisle(name, aisle); toast("Moved to " + aisleBy(aisle).name + ". I'll remember that."); }
+    closeOverlay("shop-overlay"); editingShop = null;
+  });
+  $("si-cancel").addEventListener("click", () => { closeOverlay("shop-overlay"); editingShop = null; });
+  $("si-delete").addEventListener("click", () => {
+    if (!editingShop) return;
+    const copy = Object.assign({}, editingShop);
+    closeOverlay("shop-overlay"); editingShop = null;
+    deleteShop([copy]);
+    toast("Removed: " + clip(copy.name, 30), () => restoreShop([copy]));
+  });
 
   // ---------- phone: home tiles and drill-in ----------
   const isPhone = () => window.matchMedia("(max-width: 820px)").matches;
@@ -932,6 +1151,7 @@
   function openNewTask() {
     if (!userId) return;
     const onHome = isPhone() && !document.body.classList.contains("in-view");
+    if (view.type === "shopping" && !onHome) { $("shop-input").focus(); return; }
     let categoryId = null, due = null;
     if (!onHome) {
       if (view.type === "cat" && view.id !== "none") categoryId = view.id;

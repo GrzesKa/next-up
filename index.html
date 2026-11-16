@@ -164,6 +164,16 @@
         </aside>
       </div>
     </section>
+
+    <section id="shop-mode" hidden aria-label="Shopping list">
+      <form class="shop-add" id="shop-form" autocomplete="off">
+        <input type="text" id="shop-input" placeholder="Add items, e.g. tomatoes, milk, bread" aria-label="Add shopping items" maxlength="400" enterkeyhint="done">
+        <button class="primary" type="submit">Add</button>
+      </form>
+      <p class="shop-hint">Add several at once with commas. Items sort themselves into aisles; tap one to move it, and it will remember.</p>
+      <div id="shop-groups"></div>
+      <div id="shop-basket"></div>
+    </section>
   </main>
   <button class="fab" id="fab-add" type="button" aria-label="Add task"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
 </div>
@@ -236,6 +246,27 @@
   </form>
 </div>
 
+<!-- Shopping item editor -->
+<div class="overlay" id="shop-overlay" role="dialog" aria-modal="true" aria-labelledby="si-heading">
+  <form class="sheet" id="shop-item-form" autocomplete="off">
+    <h3 id="si-heading">Item</h3>
+    <div class="form-field">
+      <label for="si-name">Name</label>
+      <input class="input" id="si-name" type="text" maxlength="200" required>
+    </div>
+    <div class="form-field">
+      <span class="lbl" id="si-aisle-lbl">Aisle</span>
+      <div class="aisle-pick" id="si-aisles" role="radiogroup" aria-labelledby="si-aisle-lbl"></div>
+    </div>
+    <p class="field-hint">Next time you add this item, it goes straight to the aisle you pick here.</p>
+    <div class="sheet-actions">
+      <button type="button" class="danger" id="si-delete">Remove</button>
+      <button type="button" class="ghost" id="si-cancel">Cancel</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+</div>
+
 <!-- Category editor -->
 <div class="overlay" id="cat-overlay" role="dialog" aria-modal="true" aria-labelledby="ce-heading">
   <form class="sheet" id="cat-form" autocomplete="off">
@@ -282,6 +313,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
+<script src="grocery-words.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

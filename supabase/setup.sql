@@ -61,3 +61,29 @@ begin
     alter publication supabase_realtime add table public.categories;
   end if;
 end $$;
+
+-- Shopping list (added later; safe to re-run)
+create table if not exists public.shopping_items (
+  id          text primary key,
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  name        text not null check (char_length(name) between 1 and 200),
+  aisle       text not null default 'other',
+  done        boolean not null default false,
+  done_at     timestamptz,
+  created_at  timestamptz not null default now()
+);
+create table if not exists public.shopping_memory (
+  id          text primary key,
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  word        text not null,
+  aisle       text not null,
+  updated_at  timestamptz not null default now()
+);
+alter table public.shopping_items enable row level security;
+alter table public.shopping_memory enable row level security;
+drop policy if exists "Own shopping items" on public.shopping_items;
+create policy "Own shopping items" on public.shopping_items for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+drop policy if exists "Own shopping memory" on public.shopping_memory;
+create policy "Own shopping memory" on public.shopping_memory for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
