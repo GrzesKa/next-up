@@ -3,6 +3,6 @@
 // The publishable (anon) key is meant to be public. Your tasks are protected by the
 // row level security rules in supabase/setup.sql, so only your signed-in account can read them.
 window.NEXTUP_CONFIG = {
-  supabaseUrl: "YOUR_SUPABASE_URL",
-  supabaseKey: "YOUR_SUPABASE_PUBLISHABLE_KEY",
+  supabaseUrl: "https://jbfhayhabfpgboorxshn.supabase.co",
+  supabaseKey: "sb_publishable_pYTOFYYQhsOD8ZNMh2U3HA_Cg03opZQ",
 };
