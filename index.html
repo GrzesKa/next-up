@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Next Up</title>
+<meta name="description" content="My tasks by priority, with a calendar.">
+<meta name="theme-color" content="#69A831">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Next Up">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<section class="auth" id="auth" hidden>
+  <form class="auth-card" id="auth-form" autocomplete="on" novalidate>
+    <div class="brand"><div class="brand-mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h1>Next Up</h1></div>
+    <h2 id="auth-title">Sign in</h2>
+    <p id="auth-lead">Your tasks stay in sync between your laptop and your phone.</p>
+    <div class="auth-msg" id="auth-msg" role="alert" hidden></div>
+    <div class="form-field">
+      <label for="auth-email">Email</label>
+      <input class="input" id="auth-email" name="email" type="email" autocomplete="email" required>
+    </div>
+    <div class="form-field">
+      <label for="auth-pass">Password</label>
+      <input class="input" id="auth-pass" name="password" type="password" autocomplete="current-password" minlength="6" required>
+    </div>
+    <button class="primary" type="submit" id="auth-submit">Sign in</button>
+    <div class="auth-links">
+      <button type="button" class="link" id="auth-switch">Create an account</button>
+      <button type="button" class="link" id="auth-forgot">Forgot password?</button>
+    </div>
+  </form>
+</section>
+
+<section class="auth" id="setup-needed" hidden>
+  <div class="auth-card">
+    <div class="brand"><div class="brand-mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h1>Next Up</h1></div>
+    <h2>Almost there</h2>
+    <p>Next Up isn't connected to its database yet. Put your Supabase project URL and publishable key into <code>config.js</code>, save it to GitHub, and reload this page.</p>
+  </div>
+</section>
+
+<section class="auth" id="booting">
+  <div class="auth-card"><div class="brand"><div class="brand-mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h1>Next Up</h1></div><p>Loading…</p></div>
+</section>
+
+<div class="app" id="app" hidden>
+  <aside class="rail" aria-label="Views and categories">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h1>Next Up</h1>
+    </div>
+    <div class="navs">
+      <div>
+        <div class="nav-label">Views</div>
+        <nav class="nav" id="nav-views"></nav>
+      </div>
+      <div class="cat-group">
+        <div class="nav-label">Categories</div>
+        <nav class="nav" id="nav-cats"></nav>
+        <button class="add-cat" id="btn-add-cat" type="button">+ New category</button>
+      </div>
+    </div>
+    <div class="status" id="status" role="status"><span class="led"></span><span id="status-text">Connecting…</span></div>
+    <div class="account"><span id="acct-email"></span><button class="signout" id="btn-signout" type="button">Sign out</button></div>
+  </aside>
+
+  <main id="main">
+    <div class="head">
+      <div>
+        <h2 id="view-title">All tasks</h2>
+        <div class="sub" id="view-sub"></div>
+      </div>
+      <button class="ghost" id="btn-edit-cat" type="button" hidden>Edit category</button>
+    </div>
+
+    <div id="list-mode">
+    <form class="quick" id="quick" autocomplete="off">
+      <div class="quick-row">
+        <input type="text" id="q-title" placeholder="Add a task, then press Enter" aria-label="New task" maxlength="300">
+      </div>
+      <div class="quick-row">
+        <select class="field-sm" id="q-cat" aria-label="Category"></select>
+        <div class="seg" role="radiogroup" aria-label="Priority">
+          <input type="radio" name="q-pri" id="q-pri-3" value="3"><label for="q-pri-3"><span class="pdot p3"></span>High</label>
+          <input type="radio" name="q-pri" id="q-pri-2" value="2" checked><label for="q-pri-2"><span class="pdot p2"></span>Medium</label>
+          <input type="radio" name="q-pri" id="q-pri-1" value="1"><label for="q-pri-1"><span class="pdot p1"></span>Low</label>
+        </div>
+        <input type="date" class="field-sm" id="q-due" aria-label="Due date">
+        <span class="spacer"></span>
+        <button class="primary" type="submit" id="q-add">Add task</button>
+      </div>
+    </form>
+
+    <section id="hero-wrap" aria-label="Most urgent task"></section>
+
+    <div class="toolbar">
+      <div class="left">
+        <span class="list-title" id="list-title">Everything else, most urgent first</span>
+      </div>
+      <div class="right">
+        <label class="inline" for="sort">Sort
+          <select class="field-sm" id="sort">
+            <option value="urgency">Urgency</option>
+            <option value="due">Due date</option>
+            <option value="priority">Priority</option>
+            <option value="newest">Newest</option>
+          </select>
+        </label>
+        <label class="inline" for="show-done"><input type="checkbox" id="show-done"> Show done</label>
+        <button class="link" id="btn-clear-done" type="button" hidden>Clear done</button>
+      </div>
+    </div>
+
+    <ul class="tasks" id="list"><li class="loading">Loading your tasks…</li></ul>
+
+    <div class="legend" aria-label="How urgency is ranked">
+      <span><span class="pdot p3"></span>High</span>
+      <span><span class="pdot p2"></span>Medium</span>
+      <span><span class="pdot p1"></span>Low</span>
+      <span>Urgency mixes priority with how close the due date is. Overdue and due-today tasks jump to the top.</span>
+    </div>
+    </div>
+
+    <section id="cal-mode" hidden aria-label="Calendar">
+      <div class="cal-bar">
+        <div class="left">
+          <h3 id="cal-month">Month</h3>
+          <button class="ghost nav-arrow" id="cal-prev" type="button" aria-label="Previous month"><svg viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="ghost nav-arrow" id="cal-next" type="button" aria-label="Next month"><svg viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="ghost" id="cal-today" type="button">Today</button>
+        </div>
+        <div class="right">
+          <select class="field-sm" id="cal-cat" aria-label="Show category"></select>
+          <label class="inline" for="cal-show-done" style="display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:14px;"><input type="checkbox" id="cal-show-done"> Show done</label>
+        </div>
+      </div>
+      <div class="cal-layout">
+        <div class="cal">
+          <div class="cal-dow" aria-hidden="true">
+            <div><span class="full">Mon</span><span class="short">M</span></div>
+            <div><span class="full">Tue</span><span class="short">T</span></div>
+            <div><span class="full">Wed</span><span class="short">W</span></div>
+            <div><span class="full">Thu</span><span class="short">T</span></div>
+            <div><span class="full">Fri</span><span class="short">F</span></div>
+            <div><span class="full">Sat</span><span class="short">S</span></div>
+            <div><span class="full">Sun</span><span class="short">S</span></div>
+          </div>
+          <div class="cal-grid" id="cal-grid"></div>
+        </div>
+
+        <aside class="day-panel" id="day-panel" aria-labelledby="dp-heading">
+          <div>
+            <h3 id="dp-heading">Day</h3>
+            <div class="sub" id="dp-sub"></div>
+          </div>
+          <form class="day-add" id="dp-form" autocomplete="off">
+            <input type="text" id="dp-title" placeholder="Add a task for this day" aria-label="New task for this day" maxlength="300">
+            <div class="quick-row">
+              <select class="field-sm" id="dp-cat" aria-label="Category"></select>
+              <div class="seg" role="radiogroup" aria-label="Priority">
+                <input type="radio" name="dp-pri" id="dp-pri-3" value="3"><label for="dp-pri-3"><span class="pdot p3"></span>High</label>
+                <input type="radio" name="dp-pri" id="dp-pri-2" value="2" checked><label for="dp-pri-2"><span class="pdot p2"></span>Med</label>
+                <input type="radio" name="dp-pri" id="dp-pri-1" value="1"><label for="dp-pri-1"><span class="pdot p1"></span>Low</label>
+              </div>
+              <button class="primary" type="submit">Add</button>
+            </div>
+          </form>
+          <div>
+            <div class="panel-h"><span>Planned this day</span><span id="dp-count"></span></div>
+          </div>
+          <ul class="tasks" id="dp-list"></ul>
+          <div>
+            <div class="panel-h"><span>No date yet</span><span id="us-count"></span></div>
+            <p class="hint desk">Drag a task onto a day, or use the button to put it on the selected day. Drag a task from the calendar back here to remove its date.</p>
+          </div>
+          <ul class="unsched" id="us-list"></ul>
+        </aside>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Task editor -->
+<div class="overlay" id="task-overlay" role="dialog" aria-modal="true" aria-labelledby="te-heading">
+  <form class="sheet" id="task-form" autocomplete="off">
+    <h3 id="te-heading">Edit task</h3>
+    <div class="form-field">
+      <label for="te-title">Task</label>
+      <input class="input" id="te-title" type="text" required maxlength="300">
+    </div>
+    <div class="row">
+      <div class="form-field">
+        <label for="te-cat">Category</label>
+        <select class="input" id="te-cat"></select>
+      </div>
+      <div class="form-field">
+        <span class="lbl" id="te-pri-lbl">Priority</span>
+        <div class="seg" role="radiogroup" aria-labelledby="te-pri-lbl">
+          <input type="radio" name="te-pri" id="te-pri-3" value="3"><label for="te-pri-3"><span class="pdot p3"></span>High</label>
+          <input type="radio" name="te-pri" id="te-pri-2" value="2"><label for="te-pri-2"><span class="pdot p2"></span>Medium</label>
+          <input type="radio" name="te-pri" id="te-pri-1" value="1"><label for="te-pri-1"><span class="pdot p1"></span>Low</label>
+        </div>
+      </div>
+    </div>
+    <div class="form-field">
+      <label for="te-due">Due date</label>
+      <input class="input" id="te-due" type="date">
+      <div class="quick-dates">
+        <button type="button" data-off="0">Today</button>
+        <button type="button" data-off="1">Tomorrow</button>
+        <button type="button" data-off="7">In a week</button>
+        <button type="button" data-off="clear">No date</button>
+      </div>
+    </div>
+    <div class="form-field">
+      <label for="te-notes">Notes</label>
+      <textarea class="input" id="te-notes" maxlength="4000"></textarea>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="danger" id="te-delete">Delete task</button>
+      <button type="button" class="ghost" id="te-cancel">Cancel</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+</div>
+
+<!-- Category editor -->
+<div class="overlay" id="cat-overlay" role="dialog" aria-modal="true" aria-labelledby="ce-heading">
+  <form class="sheet" id="cat-form" autocomplete="off">
+    <h3 id="ce-heading">New category</h3>
+    <div class="form-field">
+      <label for="ce-name">Name</label>
+      <input class="input" id="ce-name" type="text" required maxlength="60" placeholder="e.g. School">
+    </div>
+    <div class="form-field">
+      <span class="lbl" id="ce-color-lbl">Colour</span>
+      <div class="swatches" id="ce-colors" role="radiogroup" aria-labelledby="ce-color-lbl"></div>
+    </div>
+    <div class="confirm-box" id="ce-confirm" hidden>
+      <p id="ce-confirm-text"></p>
+      <div class="row">
+        <button type="button" class="ghost" id="ce-del-move">Keep tasks, remove category</button>
+        <button type="button" class="danger solid" id="ce-del-all">Delete category and its tasks</button>
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="danger" id="ce-delete">Delete category</button>
+      <button type="button" class="ghost" id="ce-cancel">Cancel</button>
+      <button type="submit" class="primary" id="ce-save">Save</button>
+    </div>
+  </form>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-text"></span><button type="button" id="toast-undo" hidden>Undo</button></div>
+
+
+<!-- New password (after a reset email) -->
+<div class="overlay" id="pw-overlay" role="dialog" aria-modal="true" aria-labelledby="pw-heading">
+  <form class="sheet" id="pw-form" autocomplete="off">
+    <h3 id="pw-heading">Choose a new password</h3>
+    <div class="form-field">
+      <label for="pw-new">New password</label>
+      <input class="input" id="pw-new" type="password" autocomplete="new-password" minlength="6" required>
+    </div>
+    <div class="sheet-actions">
+      <button type="submit" class="primary">Save password</button>
+    </div>
+  </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

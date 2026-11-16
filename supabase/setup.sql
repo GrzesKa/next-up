@@ -1,0 +1,54 @@
+-- Next Up: database setup.
+-- Run this once in Supabase: SQL Editor → New query → paste everything → Run.
+
+create table if not exists public.categories (
+  id          text primary key,
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  name        text not null check (char_length(name) between 1 and 60),
+  color       text not null default '#69A831',
+  position    integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+
+create table if not exists public.tasks (
+  id           text primary key,
+  user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  title        text not null check (char_length(title) between 1 and 300),
+  notes        text not null default '' check (char_length(notes) <= 4000),
+  category_id  text references public.categories (id) on delete set null,
+  priority     smallint not null default 2 check (priority between 1 and 3),
+  due          date,
+  done         boolean not null default false,
+  done_at      timestamptz,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists tasks_user_idx on public.tasks (user_id);
+create index if not exists categories_user_idx on public.categories (user_id);
+
+-- Row level security: every account can only see and change its own rows.
+alter table public.categories enable row level security;
+alter table public.tasks enable row level security;
+
+drop policy if exists "Own categories" on public.categories;
+create policy "Own categories" on public.categories
+  for all to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Own tasks" on public.tasks;
+create policy "Own tasks" on public.tasks
+  for all to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+-- Live updates between your devices.
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'tasks') then
+    alter publication supabase_realtime add table public.tasks;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'categories') then
+    alter publication supabase_realtime add table public.categories;
+  end if;
+end $$;
