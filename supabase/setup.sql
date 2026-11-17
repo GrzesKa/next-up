@@ -104,3 +104,5 @@ alter table public.books enable row level security;
 drop policy if exists "Own books" on public.books;
 create policy "Own books" on public.books for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+
+alter table public.books add column if not exists notes text not null default '' check (char_length(notes) <= 5000);

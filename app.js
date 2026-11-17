@@ -196,8 +196,8 @@
   const catToRow = (c) => ({ id: c.id, user_id: userId, name: c.name, color: c.color, position: c.position || 0 });
   const shopFromRow = (r) => ({ id: r.id, name: r.name || "", aisle: r.aisle || "other", done: !!r.done, doneAt: r.done_at ? Date.parse(r.done_at) : null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now() });
   const shopToRow = (i) => ({ id: i.id, user_id: userId, name: i.name, aisle: i.aisle || "other", done: !!i.done, done_at: toIso(i.doneAt), created_at: toIso(i.createdAt) });
-  const bookFromRow = (r) => ({ id: r.id, title: r.title || "", author: r.author || "", coverUrl: r.cover_url || null, status: r.status || "to_read", sourceKey: r.source_key || null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now(), finishedAt: r.finished_at ? Date.parse(r.finished_at) : null });
-  const bookToRow = (b) => ({ id: b.id, user_id: userId, title: b.title, author: b.author || "", cover_url: b.coverUrl || null, status: b.status || "to_read", source_key: b.sourceKey || null, created_at: toIso(b.createdAt), finished_at: toIso(b.finishedAt) });
+  const bookFromRow = (r) => ({ id: r.id, title: r.title || "", author: r.author || "", coverUrl: r.cover_url || null, status: r.status || "to_read", sourceKey: r.source_key || null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now(), finishedAt: r.finished_at ? Date.parse(r.finished_at) : null, notes: r.notes || "" });
+  const bookToRow = (b) => ({ id: b.id, user_id: userId, title: b.title, author: b.author || "", cover_url: b.coverUrl || null, status: b.status || "to_read", source_key: b.sourceKey || null, created_at: toIso(b.createdAt), finished_at: toIso(b.finishedAt), notes: b.notes || "" });
   const memFromRow = (r) => ({ id: r.id, word: r.word || "", aisle: r.aisle || "other" });
   const sortCats = () => { cats = cats.slice().sort((a, b) => a.position - b.position || a.name.localeCompare(b.name)); };
 
@@ -969,6 +969,12 @@
       btn.setAttribute("aria-label", b.title + (b.author ? " by " + b.author : ""));
       btn.title = b.title + (b.author ? " – " + b.author : "");
       btn.appendChild(coverNode(b));
+      if (b.notes) {
+        const nb = el("span", "note-badge"); nb.setAttribute("aria-hidden", "true");
+        nb.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 2.5h10v8l-3 3H3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.5 6h5M5.5 8.5h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+        btn.appendChild(nb);
+        btn.setAttribute("aria-label", btn.getAttribute("aria-label") + ", has a note");
+      }
       btn.addEventListener("click", () => openBook(b));
       grid.appendChild(btn);
     });
@@ -995,6 +1001,7 @@
     const row = {};
     if ("status" in patch) row.status = patch.status;
     if ("finishedAt" in patch) row.finished_at = toIso(patch.finishedAt);
+    if ("notes" in patch) row.notes = patch.notes;
     enqueue({ kind: "update", table: "books", id, patch: row, local: patch });
   }
   function deleteBook(b) {
@@ -1097,20 +1104,41 @@
     const added = new Date(b.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
     $("bk-dates").textContent = "Added " + added + (b.finishedAt ? " · Finished " + new Date(b.finishedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "");
     $("bk-shelf-" + b.status).checked = true;
-    openOverlay("book-overlay", "bk-close");
+    $("bk-notes").value = b.notes || "";
+    $("bk-notes-status").textContent = "Saved automatically.";
+    openOverlay("book-overlay", b.notes ? "bk-close" : "bk-notes");
   }
   document.querySelectorAll('input[name="bk-shelf"]').forEach((inp) => inp.addEventListener("change", () => {
     if (!openBookItem || !inp.checked) return;
+    saveBookNote();
     const status = inp.value;
     const patch = { status, finishedAt: status === "read" ? (openBookItem.finishedAt || Date.now()) : null };
     updateBook(openBookItem.id, patch);
     openBookItem = Object.assign({}, openBookItem, patch);
     toast("Moved to " + SHELF_NAME[status]);
   }));
-  $("bk-close").addEventListener("click", () => { closeOverlay("book-overlay"); openBookItem = null; });
+  let noteTimer = null;
+  function saveBookNote() {
+    clearTimeout(noteTimer);
+    if (!openBookItem) return;
+    const notes = $("bk-notes").value.trim();
+    if (notes === (openBookItem.notes || "")) return;
+    updateBook(openBookItem.id, { notes });
+    openBookItem = Object.assign({}, openBookItem, { notes });
+    $("bk-notes-status").textContent = "Saved.";
+  }
+  $("bk-notes").addEventListener("input", () => {
+    $("bk-notes-status").textContent = "Saving…";
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(saveBookNote, 900);
+  });
+  $("bk-notes").addEventListener("blur", saveBookNote);
+  $("bk-close").addEventListener("click", () => { saveBookNote(); closeOverlay("book-overlay"); openBookItem = null; });
   $("bk-delete").addEventListener("click", () => {
     if (!openBookItem) return;
-    const b = openBookItem; openBookItem = null;
+    const b = openBookItem;
+    clearTimeout(noteTimer);
+    openBookItem = null;
     closeOverlay("book-overlay");
     deleteBook(b);
   });
@@ -1318,6 +1346,7 @@
     setTimeout(() => { const f = $(focusId); if (f) f.focus(); }, 30);
   }
   function closeOverlay(id) {
+    if (id === "book-overlay" && typeof saveBookNote === "function") saveBookNote();
     $(id).classList.remove("open");
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
