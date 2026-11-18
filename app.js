@@ -674,22 +674,18 @@
   }
 
   // ---------- render: list views ----------
+  // "Do this next" uses the same block as every other task, marked with an outline and a label.
   function nextCard(top, big) {
-    const card = el("div", "next-card" + (big ? " big" : ""));
-    const body = el("button", "t-body"); body.type = "button";
-    body.setAttribute("aria-label", "Edit " + top.title);
-    body.appendChild(el("div", "label", "DO THIS NEXT  ·  " + dueShort(top)));
-    body.appendChild(el("div", "t-title", top.title));
-    const c = catById(top.categoryId);
-    const dl = dateLabel(top);
-    body.appendChild(el("div", "meta", [dl.text, c ? c.name.toUpperCase() : null, PRI[Number(top.priority) || 2].toUpperCase(), top.repeat ? "↻ " + repeatLabel(top.repeat) : null].filter(Boolean).join("  ·  ")));
-    const pb = progressBar(top); if (pb) body.appendChild(pb);
-    body.addEventListener("click", () => openTaskEditor(top));
-    const chk = el("button", "check"); chk.type = "button";
-    chk.setAttribute("aria-label", "Mark done"); chk.innerHTML = ICONS.check;
-    chk.addEventListener("click", () => toggleDone(top));
-    card.appendChild(body); card.appendChild(chk);
-    return card;
+    const ul = el("ul", "tasks next-list" + (big ? " big" : ""));
+    const li = taskRow(top);
+    li.classList.add("is-next");
+    const body = li.querySelector(".t-body");
+    const lab = el("div", "next-label");
+    lab.appendChild(el("span", "next-tag", "DO THIS NEXT"));
+    lab.appendChild(el("span", "next-why", dueShort(top)));
+    body.insertBefore(lab, body.firstChild);
+    ul.appendChild(li);
+    return ul;
   }
   function renderHero(top, anyOpen) {
     const wrap = $("hero-wrap"); wrap.innerHTML = "";
