@@ -138,3 +138,10 @@ create index if not exists wishlist_user_id_idx on public.wishlist (user_id);
 do $$ begin
   alter publication supabase_realtime add table public.wishlist;
 exception when duplicate_object then null; end $$;
+
+-- Sub-categories: a category can sit inside another one (one level deep).
+alter table public.categories add column if not exists parent_id text references public.categories (id) on delete cascade;
+do $$ begin
+  alter table public.categories add constraint categories_not_own_parent check (parent_id is null or parent_id <> id);
+exception when duplicate_object then null; end $$;
+create index if not exists categories_parent_id_idx on public.categories (parent_id);

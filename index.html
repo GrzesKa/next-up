@@ -94,6 +94,7 @@
 
     <div id="list-mode">
 
+    <div class="sub-chips" id="sub-chips" role="group" aria-label="Sub-categories" hidden></div>
     <section id="hero-wrap" aria-label="Do this next"></section>
 
     <div class="toolbar">
@@ -427,8 +428,9 @@
     <div class="form-field">
       <label for="ce-name">Name</label>
       <input class="input" id="ce-name" type="text" required maxlength="60" placeholder="e.g. School">
+      <p class="field-hint" id="ce-sub-hint" hidden></p>
     </div>
-    <div class="form-field">
+    <div class="form-field" id="ce-color-field">
       <span class="lbl" id="ce-color-lbl">Colour</span>
       <div class="swatches" id="ce-colors" role="radiogroup" aria-labelledby="ce-color-lbl"></div>
     </div>

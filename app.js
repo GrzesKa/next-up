@@ -163,10 +163,20 @@
     return c;
   }
   const catById = (id) => cats.find((c) => c.id === id);
+  // Sub-categories: one level deep, they share their parent's colour.
+  const rootOf = (c) => (c && c.parentId ? catById(c.parentId) || c : c);
+  const isTop = (c) => !c.parentId || !catById(c.parentId);
+  const topCats = () => cats.filter(isTop);
+  const subsOf = (id) => cats.filter((c) => c.parentId === id);
+  const catColor = (c) => (c ? rootOf(c).color : NO_CAT.sq);
+  const inCatTree = (t, id) => { const c = catById(t.categoryId); return !!c && (c.id === id || c.parentId === id); };
   function inView(t, v) {
     if (v.type === "today") { const d = daysUntil(t.due); return d !== null && d <= 0; }
     if (v.type === "week") { const d = daysUntil(t.due); return d !== null && d <= 7; }
-    if (v.type === "cat") return v.id === "none" ? !catById(t.categoryId) : t.categoryId === v.id;
+    if (v.type === "cat") {
+      if (v.id === "none") return !catById(t.categoryId);
+      return v.sub ? t.categoryId === v.sub : inCatTree(t, v.id);
+    }
     return true;
   }
 
@@ -200,8 +210,8 @@
     });
     return out;
   }
-  const catFromRow = (r) => ({ id: r.id, name: r.name || "", color: r.color || COLORS[0], position: Number(r.position) || 0 });
-  const catToRow = (c) => ({ id: c.id, user_id: userId, name: c.name, color: c.color, position: c.position || 0 });
+  const catFromRow = (r) => ({ id: r.id, name: r.name || "", color: r.color || COLORS[0], position: Number(r.position) || 0, parentId: r.parent_id || null });
+  const catToRow = (c) => ({ id: c.id, user_id: userId, name: c.name, color: c.color, position: c.position || 0, parent_id: c.parentId || null });
   const shopFromRow = (r) => ({ id: r.id, name: r.name || "", aisle: r.aisle || "other", done: !!r.done, doneAt: r.done_at ? Date.parse(r.done_at) : null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now() });
   const shopToRow = (i) => ({ id: i.id, user_id: userId, name: i.name, aisle: i.aisle || "other", done: !!i.done, done_at: toIso(i.doneAt), created_at: toIso(i.createdAt) });
   const bookFromRow = (r) => ({ id: r.id, title: r.title || "", author: r.author || "", coverUrl: r.cover_url || null, status: r.status || "to_read", sourceKey: r.source_key || null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now(), finishedAt: r.finished_at ? Date.parse(r.finished_at) : null, notes: r.notes || "" });
@@ -579,17 +589,20 @@
     sortCats(); render();
     enqueue({ kind: "upsert", table: "categories", rows: [catToRow(c)] });
   }
+  // Deleting a category also deletes its sub-categories. Deleting a sub-category moves its tasks up into the parent.
   function deleteCategory(c, withTasks) {
-    const inCat = tasks.filter((t) => t.categoryId === c.id);
-    cats = cats.filter((x) => x.id !== c.id);
-    if (withTasks) tasks = tasks.filter((t) => t.categoryId !== c.id);
-    else tasks = tasks.map((t) => (t.categoryId === c.id ? Object.assign({}, t, { categoryId: null }) : t));
+    const parent = c.parentId ? catById(c.parentId) : null;
+    const ids = [c.id].concat(parent ? [] : subsOf(c.id).map((x) => x.id));
+    const target = parent ? parent.id : null;
+    cats = cats.filter((x) => ids.indexOf(x.id) === -1);
+    if (withTasks && !parent) tasks = tasks.filter((t) => ids.indexOf(t.categoryId) === -1);
+    else tasks = tasks.map((t) => (ids.indexOf(t.categoryId) !== -1 ? Object.assign({}, t, { categoryId: target }) : t));
     render();
-    if (inCat.length) {
-      if (withTasks) enqueue({ kind: "deleteWhere", table: "tasks", field: "category_id", value: c.id });
-      else enqueue({ kind: "updateWhere", table: "tasks", field: "category_id", value: c.id, patch: { category_id: null }, local: { categoryId: null } });
-    }
-    enqueue({ kind: "delete", table: "categories", ids: [c.id] });
+    ids.forEach((id) => {
+      if (withTasks && !parent) enqueue({ kind: "deleteWhere", table: "tasks", field: "category_id", value: id });
+      else enqueue({ kind: "updateWhere", table: "tasks", field: "category_id", value: id, patch: { category_id: target }, local: { categoryId: target } });
+    });
+    enqueue({ kind: "delete", table: "categories", ids: ids.slice().reverse() });
   }
   function placeTask(id, due) {
     const t = tasks.find((x) => x.id === id);
@@ -619,15 +632,23 @@
       nv.appendChild(b);
     });
     const nc = $("nav-cats"); nc.innerHTML = "";
-    cats.forEach((c) => nc.appendChild(navButton({ type: "cat", id: c.id }, c.name, null, c.color, open.filter((t) => t.categoryId === c.id).length, false, true)));
+    const tops = topCats();
+    tops.forEach((c) => {
+      nc.appendChild(navButton({ type: "cat", id: c.id }, c.name, null, c.color, open.filter((t) => inCatTree(t, c.id)).length, false, true));
+      subsOf(c.id).forEach((sc) => {
+        const b = navButton({ type: "cat", id: c.id, sub: sc.id }, sc.name, null, c.color, open.filter((t) => t.categoryId === sc.id).length, false, true);
+        b.classList.add("subcat");
+        nc.appendChild(b);
+      });
+    });
     const orphan = open.filter((t) => !catById(t.categoryId)).length;
     if (orphan > 0) nc.appendChild(navButton({ type: "cat", id: "none" }, "No category", null, "#DEDAD2", orphan, false, true));
-    $("cat-count").textContent = String(cats.length).padStart(2, "0") + (cats.length === 1 ? " LIST" : " LISTS");
+    $("cat-count").textContent = String(tops.length).padStart(2, "0") + (tops.length === 1 ? " LIST" : " LISTS");
     $("brand-date").textContent = new Date().toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase() + " " + String(new Date().getDate()).padStart(2, "0") + "." + String(new Date().getMonth() + 1).padStart(2, "0");
   }
   function navButton(v, name, icon, color, count, alert, isCat) {
     const b = el("button", "nav-item" + (isCat ? " cat" : "")); b.type = "button";
-    const active = view.type === v.type && (v.type !== "cat" || view.id === v.id);
+    const active = view.type === v.type && (v.type !== "cat" || (view.id === v.id && (view.sub || null) === (v.sub || null)));
     b.setAttribute("aria-current", active ? "true" : "false");
     if (icon) b.insertAdjacentHTML("beforeend", icon);
     if (color) { applyPair(b, color); b.appendChild(el("span", "dot")); }
@@ -637,10 +658,16 @@
     b.addEventListener("click", () => { view = v; savePrefs(); render(); if (isPhone()) enterView(); });
     return b;
   }
+  function catOptions(sel) {
+    topCats().forEach((c) => {
+      const o = el("option", null, c.name); o.value = c.id; sel.appendChild(o);
+      subsOf(c.id).forEach((sc) => { const so = el("option", null, c.name + " › " + sc.name); so.value = sc.id; sel.appendChild(so); });
+    });
+  }
   function renderCatSelect(sel, value) {
     sel.innerHTML = "";
     const none = el("option", null, "No category"); none.value = ""; sel.appendChild(none);
-    cats.forEach((c) => { const o = el("option", null, c.name); o.value = c.id; sel.appendChild(o); });
+    catOptions(sel);
     sel.value = value && catById(value) ? value : "";
   }
   function dateLabel(t) {
@@ -658,7 +685,11 @@
     const dl = dateLabel(t);
     m.appendChild(el("span", "date " + dl.cls, dl.text));
     const c = catById(t.categoryId);
-    if (c && !(opts && opts.hideCat)) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", null, c.name.toUpperCase())); }
+    if (c) {
+      const root = rootOf(c);
+      const label = opts && opts.hideCat ? (c !== root && !(opts.hideSub) ? c.name : "") : (c !== root ? root.name + " › " + c.name : c.name);
+      if (label) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", null, label.toUpperCase())); }
+    }
     if (t.repeat) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", "rep", "↻ " + repeatLabel(t.repeat))); }
     if (t.notes && opts && opts.noteFlag) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", null, "NOTES")); }
     return m;
@@ -698,13 +729,13 @@
     const p = Number(t.priority) || 2;
     const li = el("li", "task" + (t.done ? " done" : ""));
     const c = catById(t.categoryId);
-    applyPair(li, c ? c.color : NO_CAT.sq);
+    applyPair(li, catColor(c));
     if (!c) { li.style.setProperty("--c", NO_CAT.sq); li.style.setProperty("--c2", NO_CAT.ci); }
     const bar = el("span", "cbar"); bar.setAttribute("aria-hidden", "true"); bar.appendChild(el("span"));
     const body = el("button", "t-body"); body.type = "button";
     body.setAttribute("aria-label", "Edit " + t.title);
     body.appendChild(el("div", "t-title", t.title));
-    body.appendChild(metaLine(t, { hideCat: view.type === "cat", noteFlag: true }));
+    body.appendChild(metaLine(t, { hideCat: view.type === "cat", hideSub: view.type === "cat" && !!view.sub, noteFlag: true }));
     const pb = progressBar(t); if (pb) body.appendChild(pb);
     body.addEventListener("click", () => openTaskEditor(t));
     const pending = isPending(t);
@@ -739,6 +770,27 @@
     ul.appendChild(li);
     return ul;
   }
+  // Chips under a category's title: All · each sub-category · + Sub-category
+  function renderSubChips(c) {
+    const box = $("sub-chips"); box.innerHTML = "";
+    box.hidden = !c;
+    if (!c) return;
+    const open = tasks.filter((t) => !t.done);
+    const chip = (label, n, on, fn, cls) => {
+      const b = el("button", "chip" + (cls ? " " + cls : "")); b.type = "button";
+      b.appendChild(el("span", null, label));
+      if (n != null) b.appendChild(el("span", "chip-n", String(n)));
+      if (on != null) b.setAttribute("aria-pressed", on ? "true" : "false");
+      b.addEventListener("click", fn);
+      box.appendChild(b);
+    };
+    const subs = subsOf(c.id);
+    if (subs.length) {
+      chip("All", open.filter((t) => inCatTree(t, c.id)).length, !view.sub, () => { view = { type: "cat", id: c.id }; savePrefs(); render(); });
+      subs.forEach((sc) => chip(sc.name, open.filter((t) => t.categoryId === sc.id).length, view.sub === sc.id, () => { view = { type: "cat", id: c.id, sub: sc.id }; savePrefs(); render(); }));
+    }
+    chip("+ Sub-category", null, null, () => openCatEditor(null, c), "chip-add");
+  }
   function renderHero(top, anyOpen) {
     const wrap = $("hero-wrap"); wrap.innerHTML = "";
     if (top) { wrap.appendChild(nextCard(top)); return; }
@@ -753,7 +805,12 @@
 
   function render() {
     if (!userId) return;
-    if (view.type === "cat" && view.id !== "none" && !catById(view.id) && cats.length) view = { type: "all" };
+    if (view.type === "cat" && view.id !== "none") {
+      const vc = catById(view.id);
+      if (vc && vc.parentId && catById(vc.parentId)) view = { type: "cat", id: vc.parentId, sub: vc.id };
+      if (view.sub && !catById(view.sub)) view = { type: "cat", id: view.id };
+      if (!catById(view.id) && cats.length) view = { type: "all" };
+    }
     renderNav();
     renderHomeNext();
 
@@ -764,6 +821,8 @@
     const isWish = view.type === "wishlist";
     $("view-title").textContent = isWish ? "Wishlist" : isBooks ? "Books" : isShop ? "Shopping" : isCal ? "Calendar" : view.type === "today" ? "Today" : view.type === "week" ? "Next 7 days" : view.type === "cat" ? (c ? c.name : "No category") : "All tasks";
     $("btn-edit-cat").hidden = !c;
+    $("btn-edit-cat").textContent = view.sub ? "Edit sub-category" : "Edit category";
+    renderSubChips(c);
     $("list-mode").hidden = isCal || isShop || isBooks || isWish;
     $("books-mode").hidden = !isBooks;
     $("wish-mode").hidden = !isWish;
@@ -1582,7 +1641,7 @@
   let selDay = dateStr(0);
   let dragId = null;
   let lastGhosts = new Map();
-  const calMatches = (t) => !calCat || (calCat === "none" ? !catById(t.categoryId) : t.categoryId === calCat);
+  const calMatches = (t) => !calCat || (calCat === "none" ? !catById(t.categoryId) : (t.categoryId === calCat || inCatTree(t, calCat)));
   const byDoneThenUrgency = (arr) => sortTasks(arr.filter(isShown), "urgency").concat(arr.filter((t) => !isShown(t)));
 
   function makeDraggable(node, id) {
@@ -1610,7 +1669,7 @@
   function renderCalSelects() {
     const fsel = $("cal-cat"); fsel.innerHTML = "";
     const all = el("option", null, "All categories"); all.value = ""; fsel.appendChild(all);
-    cats.forEach((c) => { const o = el("option", null, c.name); o.value = c.id; fsel.appendChild(o); });
+    catOptions(fsel);
     if (tasks.some((t) => !catById(t.categoryId))) { const o = el("option", null, "No category"); o.value = "none"; fsel.appendChild(o); }
     if (calCat && calCat !== "none" && !catById(calCat)) calCat = "";
     fsel.value = calCat;
@@ -1655,7 +1714,7 @@
         const over = !t.done && daysUntil(t.due) < 0;
         const pill = el("button", "pill p" + p + (t.done ? " done" : "") + (over ? " over" : ""));
         pill.type = "button"; pill.title = t.title;
-        applyPair(pill, c ? c.color : NO_CAT.sq);
+        applyPair(pill, catColor(c));
         pill.appendChild(el("span", "dot"));
         pill.appendChild(el("span", "ptext", t.title));
         pill.addEventListener("click", (e) => { e.stopPropagation(); if (narrow) selectDay(ds); else openTaskEditor(t); });
@@ -1667,7 +1726,7 @@
       gl.slice(0, room).forEach((t) => {
         const c = catById(t.categoryId);
         const g = el("button", "pill ghost"); g.type = "button"; g.title = t.title + " (repeats)";
-        applyPair(g, c ? c.color : NO_CAT.sq);
+        applyPair(g, catColor(c));
         g.appendChild(el("span", "ptext", "↻ " + t.title));
         g.addEventListener("click", (e) => { e.stopPropagation(); if (narrow) selectDay(ds); else openTaskEditor(t); });
         cell.appendChild(g);
@@ -1722,7 +1781,7 @@
       const p = Number(t.priority) || 2;
       const li = el("li", "mini");
       const c = catById(t.categoryId);
-      applyPair(li, c ? c.color : NO_CAT.sq);
+      applyPair(li, catColor(c));
       li.appendChild(el("span", "dot"));
       const tb = el("button", "t", t.title); tb.type = "button"; tb.setAttribute("aria-label", "Edit " + t.title);
       tb.addEventListener("click", () => openTaskEditor(t));
@@ -1816,7 +1875,7 @@
     if (view.type === "wishlist" && !onHome) { openWishEditor(null); return; }
     let categoryId = null, due = null;
     if (!onHome) {
-      if (view.type === "cat" && view.id !== "none") categoryId = view.id;
+      if (view.type === "cat" && view.id !== "none") categoryId = view.sub && catById(view.sub) ? view.sub : view.id;
       if (view.type === "calendar") { due = selDay; if (calCat && calCat !== "none") categoryId = calCat; }
       if (view.type === "today") due = dateStr(0);
     }
@@ -1910,52 +1969,83 @@
       box.appendChild(inp); box.appendChild(lab);
     });
   }
-  function openCatEditor(c) {
+  let editingParent = null;
+  function openCatEditor(c, parentForNew) {
     editingCat = c || null;
-    $("ce-heading").textContent = c ? "Edit category" : "New category";
+    editingParent = c ? (c.parentId ? catById(c.parentId) : null) : (parentForNew || null);
+    const isSub = !!editingParent;
+    $("ce-heading").textContent = c ? (isSub ? "Edit sub-category" : "Edit category") : (isSub ? "New sub-category" : "New category");
     $("ce-name").value = c ? c.name : "";
-    const used = new Set(cats.map((x) => x.color));
+    $("ce-name").placeholder = isSub ? "e.g. 3D printing" : "e.g. School";
+    $("ce-sub-hint").hidden = !isSub;
+    if (isSub) $("ce-sub-hint").textContent = "Inside “" + editingParent.name + "”, in the same colour.";
+    $("ce-color-field").hidden = isSub;
+    const used = new Set(topCats().map((x) => x.color));
     buildSwatches(c ? c.color : (COLORS.find((x) => !used.has(x)) || COLORS[cats.length % COLORS.length]));
     $("ce-delete").hidden = !c;
+    $("ce-delete").textContent = isSub ? "Delete sub-category" : "Delete category";
     $("ce-confirm").hidden = true;
-    $("ce-save").textContent = c ? "Save" : "Add category";
+    $("ce-save").textContent = c ? "Save" : isSub ? "Add sub-category" : "Add category";
     openOverlay("cat-overlay", "ce-name");
   }
   $("btn-add-cat").addEventListener("click", () => openCatEditor(null));
-  $("btn-edit-cat").addEventListener("click", () => { const c = view.type === "cat" ? catById(view.id) : null; if (c) openCatEditor(c); });
+  $("btn-edit-cat").addEventListener("click", () => {
+    if (view.type !== "cat") return;
+    const c = catById(view.sub) || catById(view.id);
+    if (c) openCatEditor(c);
+  });
   $("cat-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const name = $("ce-name").value.trim();
     if (!name) { $("ce-name").focus(); return; }
     const color = (document.querySelector('input[name="ce-color"]:checked') || {}).value || COLORS[0];
     if (editingCat) {
-      saveCategory(Object.assign({}, editingCat, { name, color }));
+      saveCategory(Object.assign({}, editingCat, editingParent ? { name } : { name, color }));
+    } else if (editingParent) {
+      const pos = subsOf(editingParent.id).reduce((mx, c) => Math.max(mx, c.position), -1) + 1;
+      const nc = { id: uid("c"), name, color: editingParent.color, position: pos, parentId: editingParent.id };
+      view = { type: "cat", id: editingParent.id, sub: nc.id }; savePrefs();
+      saveCategory(nc);
     } else {
       const pos = cats.reduce((mx, c) => Math.max(mx, c.position), -1) + 1;
       const nc = { id: uid("c"), name, color, position: pos };
       view = { type: "cat", id: nc.id }; savePrefs();
       saveCategory(nc);
     }
-    closeOverlay("cat-overlay"); editingCat = null;
+    closeOverlay("cat-overlay"); editingCat = null; editingParent = null;
   });
-  $("ce-cancel").addEventListener("click", () => { closeOverlay("cat-overlay"); editingCat = null; });
+  $("ce-cancel").addEventListener("click", () => { closeOverlay("cat-overlay"); editingCat = null; editingParent = null; });
   $("ce-delete").addEventListener("click", () => {
     if (!editingCat) return;
-    const inCat = tasks.filter((t) => t.categoryId === editingCat.id);
-    if (!inCat.length) { removeCategory(false); return; }
+    const isSub = !!editingParent;
+    const inCat = tasks.filter((t) => isSub ? t.categoryId === editingCat.id : inCatTree(t, editingCat.id));
+    const subN = isSub ? 0 : subsOf(editingCat.id).length;
+    if (!inCat.length && !subN) { removeCategory(false); return; }
     const openN = inCat.filter((t) => !t.done).length;
-    $("ce-confirm-text").textContent = "“" + editingCat.name + "” has " + inCat.length + (inCat.length === 1 ? " task" : " tasks") + (openN ? " (" + openN + " still open)" : "") + ". What should happen to them?";
+    const tasksTxt = inCat.length + (inCat.length === 1 ? " task" : " tasks") + (openN ? " (" + openN + " still open)" : "");
+    if (isSub) {
+      $("ce-confirm-text").textContent = "“" + editingCat.name + "” has " + tasksTxt + ". They'll move to “" + editingParent.name + "”.";
+      $("ce-del-move").textContent = "Delete sub-category, keep tasks";
+      $("ce-del-all").hidden = true;
+    } else {
+      $("ce-confirm-text").textContent = "“" + editingCat.name + "” has " + (subN ? subN + (subN === 1 ? " sub-category and " : " sub-categories and ") : "") + tasksTxt + "." + (inCat.length ? " What should happen to the tasks?" : "");
+      $("ce-del-move").textContent = subN ? "Keep tasks, remove category and sub-categories" : "Keep tasks, remove category";
+      $("ce-del-all").textContent = "Delete category and its tasks";
+      $("ce-del-all").hidden = !inCat.length;
+    }
     $("ce-confirm").hidden = false;
   });
   $("ce-del-move").addEventListener("click", () => removeCategory(false));
   $("ce-del-all").addEventListener("click", () => removeCategory(true));
   function removeCategory(withTasks) {
     if (!editingCat) return;
-    const c = editingCat;
-    view = { type: "all" }; savePrefs();
-    closeOverlay("cat-overlay"); editingCat = null;
+    const c = editingCat, parent = editingParent;
+    view = parent ? { type: "cat", id: parent.id } : { type: "all" }; savePrefs();
+    closeOverlay("cat-overlay"); editingCat = null; editingParent = null;
+    const hadTasks = tasks.some((t) => parent ? t.categoryId === c.id : inCatTree(t, c.id));
     deleteCategory(c, withTasks);
-    toast(withTasks ? "Deleted “" + clip(c.name, 30) + "” and its tasks" : "Deleted “" + clip(c.name, 30) + "”. Its tasks are now under No category.");
+    if (parent) toast("Deleted “" + clip(c.name, 30) + "”" + (hadTasks ? ". Its tasks moved to “" + clip(parent.name, 24) + "”." : ""));
+    else toast(withTasks ? "Deleted “" + clip(c.name, 30) + "” and its tasks" : "Deleted “" + clip(c.name, 30) + "”" + (hadTasks ? ". Its tasks are now under No category." : ""));
   }
 
   // ---------- sign-in ----------

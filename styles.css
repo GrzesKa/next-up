@@ -568,3 +568,20 @@ input[type="date"].input::-webkit-calendar-picker-indicator { margin-left: auto;
 .wi-bought { flex: 1; border: 0; border-radius: 12px; background: var(--lime); color: var(--forest); font-weight: 700; font-size: 14.5px; padding: 12px; }
 .wi-bought.is-bought { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
 .wi-close { align-self: stretch; }
+
+/* ---------- sub-categories ---------- */
+.sub-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: -4px 0 14px; }
+.sub-chips[hidden] { display: none; }
+.sub-chips .chip { display: inline-flex; align-items: baseline; gap: 6px; }
+.sub-chips .chip-n { font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--faint); }
+.sub-chips .chip[aria-pressed="true"] .chip-n { color: var(--lime); }
+.chip.chip-add { background: none; border: 1.5px dashed var(--faint); color: var(--muted); padding: 6px 11px; }
+.chip.chip-add:hover { color: var(--ink); border-color: var(--ink); }
+#nav-cats .nav-item.subcat { padding-left: 30px; font-size: 14px; }
+#nav-cats .nav-item.subcat .dot { width: 9px; height: 9px; margin: 0 4px; border-radius: 50%; background: var(--c2); }
+#nav-cats .nav-item.subcat .dot::after { display: none; }
+@media (max-width: 820px) {
+  #nav-cats .nav-item.subcat { display: none; }
+  .sub-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-left: -2px; margin-right: -2px; padding: 0 2px; }
+  .sub-chips::-webkit-scrollbar { display: none; }
+}
