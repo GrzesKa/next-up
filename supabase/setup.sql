@@ -112,3 +112,29 @@ alter table public.tasks add column if not exists progress smallint not null def
 -- Ticked tasks stay visible (crossed off) until tapped a second time.
 -- cleared = false means "ticked today, still showing"; existing rows default to true.
 alter table public.tasks add column if not exists cleared boolean not null default true;
+
+-- Wishlist: things to buy, saved from a link.
+create table if not exists public.wishlist (
+  id          text primary key,
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  name        text not null check (char_length(name) between 1 and 300),
+  url         text check (url is null or char_length(url) <= 2000),
+  image_url   text check (image_url is null or char_length(image_url) <= 2000),
+  shop        text not null default '' check (char_length(shop) <= 120),
+  price       numeric(12,2) check (price is null or price >= 0),
+  currency    text check (currency is null or char_length(currency) <= 8),
+  tag         text not null default '' check (char_length(tag) <= 40),
+  want        smallint not null default 2 check (want between 1 and 3),
+  notes       text not null default '' check (char_length(notes) <= 4000),
+  status      text not null default 'want' check (status in ('want','bought')),
+  created_at  timestamptz not null default now(),
+  bought_at   timestamptz
+);
+alter table public.wishlist enable row level security;
+drop policy if exists "Own wishlist" on public.wishlist;
+create policy "Own wishlist" on public.wishlist for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create index if not exists wishlist_user_id_idx on public.wishlist (user_id);
+do $$ begin
+  alter publication supabase_realtime add table public.wishlist;
+exception when duplicate_object then null; end $$;

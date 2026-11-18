@@ -2,7 +2,7 @@
    App files: try the network first (so updates show up straight away), fall back to the
    saved copy when there is no connection. Libraries and fonts: saved copy first.
    Supabase (your data and sign-in) is never cached here; the app keeps its own copy of your tasks. */
-const VERSION = "nextup-v5";
+const VERSION = "nextup-v6";
 const CORE = [
   "/",
   "/index.html",
@@ -40,6 +40,7 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.hostname.endsWith("supabase.co") || url.hostname.endsWith("supabase.in")) return;
+  if (url.origin === self.location.origin && url.pathname.startsWith("/api/")) return;
   if (url.origin === self.location.origin) { event.respondWith(networkFirst(req)); return; }
   if (/(^|\.)(cdn\.jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com|covers\.openlibrary\.org|books\.google\.com|books\.googleusercontent\.com)$/.test(url.hostname)) {
     event.respondWith(cacheFirst(req));

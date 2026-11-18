@@ -183,6 +183,16 @@
       </div>
       <div class="cover-grid" id="cover-grid" role="tabpanel"></div>
     </section>
+    <section id="wish-mode" hidden aria-label="Wishlist">
+      <div class="wish-bar">
+        <div class="shelf-tabs" role="tablist" aria-label="Wishlist">
+          <button type="button" role="tab" data-wtab="want">Want <span></span></button>
+          <button type="button" role="tab" data-wtab="bought">Bought <span></span></button>
+        </div>
+      </div>
+      <div class="wish-tags" id="wish-tags" role="group" aria-label="Filter by tag"></div>
+      <div class="wish-grid" id="wish-grid" role="tabpanel"></div>
+    </section>
   </main>
   <button class="fab" id="fab-add" type="button" aria-label="Add task"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
 </div>
@@ -324,6 +334,88 @@
     <div class="sheet-actions">
       <button type="button" class="danger" id="bk-delete">Remove</button>
       <button type="button" class="primary" id="bk-close">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Wishlist: add or edit -->
+<div class="overlay" id="wish-edit-overlay" role="dialog" aria-modal="true" aria-labelledby="we-heading">
+  <form class="sheet" id="we-form" autocomplete="off" novalidate>
+    <h3 id="we-heading">Add to wishlist</h3>
+    <div class="form-field">
+      <label for="we-url">Link</label>
+      <div class="link-row">
+        <input class="input" id="we-url" type="url" inputmode="url" placeholder="Paste a link to the product" maxlength="2000">
+        <button type="button" class="ghost" id="we-paste">Paste</button>
+      </div>
+    </div>
+    <div class="we-found" id="we-found" hidden>
+      <div class="we-thumb" id="we-thumb"></div>
+      <div class="we-found-text">
+        <span class="we-status" id="we-status"></span>
+        <span class="we-found-name" id="we-found-name"></span>
+        <span class="field-hint" id="we-found-hint"></span>
+      </div>
+    </div>
+    <div class="we-grid">
+      <div class="form-field">
+        <label for="we-name">Name</label>
+        <input class="input" id="we-name" type="text" maxlength="300">
+      </div>
+      <div class="form-field">
+        <label for="we-price">Price</label>
+        <input class="input" id="we-price" type="text" inputmode="decimal" placeholder="e.g. 349 zł" maxlength="40">
+      </div>
+    </div>
+    <div class="form-field">
+      <label for="we-tag">Tag</label>
+      <input class="input" id="we-tag" type="text" list="we-tags" placeholder="e.g. Surf, Tech, Clothes" maxlength="40">
+      <datalist id="we-tags"></datalist>
+    </div>
+    <div class="form-field">
+      <span class="lbl" id="we-want-lbl">How much you want it</span>
+      <div class="seg" role="radiogroup" aria-labelledby="we-want-lbl">
+        <input type="radio" name="we-want" id="we-want-3" value="3"><label for="we-want-3"><span class="trio" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span>Really</label>
+        <input type="radio" name="we-want" id="we-want-2" value="2"><label for="we-want-2"><span class="trio" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span>Quite</label>
+        <input type="radio" name="we-want" id="we-want-1" value="1"><label for="we-want-1"><span class="trio" aria-hidden="true"><i class="on"></i><i></i><i></i></span>A little</label>
+      </div>
+    </div>
+    <div class="form-field">
+      <label for="we-notes">Note</label>
+      <textarea class="input autogrow" id="we-notes" maxlength="4000" placeholder="Size, colour, wait for a sale…"></textarea>
+    </div>
+    <details class="we-more">
+      <summary>Photo</summary>
+      <div class="form-field">
+        <label for="we-image">Photo link</label>
+        <input class="input" id="we-image" type="url" inputmode="url" placeholder="Right-click or long-press a photo, copy its address" maxlength="2000">
+      </div>
+    </details>
+    <div class="sheet-actions">
+      <button type="button" class="danger" id="we-delete">Delete</button>
+      <button type="button" class="ghost" id="we-cancel">Cancel</button>
+      <button type="submit" class="primary" id="we-save">Save</button>
+    </div>
+  </form>
+</div>
+
+<!-- Wishlist: item -->
+<div class="overlay" id="wish-overlay" role="dialog" aria-modal="true" aria-labelledby="wi-name">
+  <div class="sheet wish-sheet">
+    <div class="wi-photo" id="wi-photo"></div>
+    <div class="wi-head">
+      <div class="wi-meta"><span id="wi-meta"></span><span id="wi-want"></span></div>
+      <h3 id="wi-name">Item</h3>
+      <div class="wi-price"><span id="wi-price"></span><span class="wi-shop" id="wi-shop"></span></div>
+    </div>
+    <div class="wi-note" id="wi-note-box"><span class="lbl">My note</span><p id="wi-note"></p></div>
+    <div class="wi-actions">
+      <a class="primary wi-open" id="wi-open" target="_blank" rel="noopener noreferrer">Open in shop ↗</a>
+      <div class="wi-row">
+        <button type="button" class="wi-bought" id="wi-bought">✓ Mark as bought</button>
+        <button type="button" class="ghost" id="wi-edit">Edit</button>
+      </div>
+      <button type="button" class="ghost wi-close" id="wi-close">Close</button>
     </div>
   </div>
 </div>

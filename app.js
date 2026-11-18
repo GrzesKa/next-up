@@ -51,6 +51,7 @@
     today: '<svg class="icon" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
     cal: '<svg class="icon" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 6.5h11" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="9.3" r=".9" fill="currentColor"/><circle cx="8" cy="9.3" r=".9" fill="currentColor"/><circle cx="10.5" cy="9.3" r=".9" fill="currentColor"/><circle cx="5.5" cy="11.6" r=".9" fill="currentColor"/></svg>',
     book: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M3 2.5h7.5a2 2 0 0 1 2 2v9H5a2 2 0 0 1-2-2v-9z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M3 11.5a2 2 0 0 1 2-2h7.5" stroke="currentColor" stroke-width="1.5"/></svg>',
+    gift: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M8 13.5S2.5 10.4 2.5 6.4A2.9 2.9 0 0 1 8 5a2.9 2.9 0 0 1 5.5 1.4c0 4-5.5 7.1-5.5 7.1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
     cart: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M1.8 2.5h2l1.6 7.6h7l1.5-5.4H4.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.3" cy="13" r="1.1" fill="currentColor"/><circle cx="11.6" cy="13" r="1.1" fill="currentColor"/></svg>',
     week: '<svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M3 12.5l3-4 3 2 4-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     check: '<svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.3 2.3 4.7-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -66,6 +67,7 @@
   let tasks = [];
   let shop = [];
   let books = [];
+  let wish = [];
   let mem = [];
   let loaded = false;
   let seeding = false;
@@ -75,9 +77,11 @@
   let showDone = !!prefs.showDone;
   let calCat = prefs.calCat || "";
   let shelf = prefs.shelf || "to_read";
+  let wishTab = prefs.wishTab === "bought" ? "bought" : "want";
+  let wishTag = prefs.wishTag || "";
 
   function loadPrefs() { try { return JSON.parse(localStorage.getItem("nextup.prefs") || "{}"); } catch (e) { return {}; } }
-  function savePrefs() { try { localStorage.setItem("nextup.prefs", JSON.stringify({ view, sortBy, showDone, calCat, shelf })); } catch (e) {} }
+  function savePrefs() { try { localStorage.setItem("nextup.prefs", JSON.stringify({ view, sortBy, showDone, calCat, shelf, wishTab, wishTag })); } catch (e) {} }
 
   const $ = (id) => document.getElementById(id);
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -201,6 +205,12 @@
   const shopFromRow = (r) => ({ id: r.id, name: r.name || "", aisle: r.aisle || "other", done: !!r.done, doneAt: r.done_at ? Date.parse(r.done_at) : null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now() });
   const shopToRow = (i) => ({ id: i.id, user_id: userId, name: i.name, aisle: i.aisle || "other", done: !!i.done, done_at: toIso(i.doneAt), created_at: toIso(i.createdAt) });
   const bookFromRow = (r) => ({ id: r.id, title: r.title || "", author: r.author || "", coverUrl: r.cover_url || null, status: r.status || "to_read", sourceKey: r.source_key || null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now(), finishedAt: r.finished_at ? Date.parse(r.finished_at) : null, notes: r.notes || "" });
+  const wishFromRow = (r) => ({ id: r.id, name: r.name || "", url: r.url || null, imageUrl: r.image_url || null, shop: r.shop || "",
+    price: r.price == null ? null : Number(r.price), currency: r.currency || null, tag: r.tag || "", want: Number(r.want) || 2, notes: r.notes || "",
+    status: r.status === "bought" ? "bought" : "want", createdAt: r.created_at ? Date.parse(r.created_at) : Date.now(), boughtAt: r.bought_at ? Date.parse(r.bought_at) : null });
+  const wishToRow = (w) => ({ id: w.id, user_id: userId, name: w.name, url: w.url || null, image_url: w.imageUrl || null, shop: w.shop || "",
+    price: w.price == null ? null : w.price, currency: w.currency || null, tag: w.tag || "", want: Number(w.want) || 2, notes: w.notes || "",
+    status: w.status || "want", created_at: toIso(w.createdAt), bought_at: toIso(w.boughtAt) });
   const bookToRow = (b) => ({ id: b.id, user_id: userId, title: b.title, author: b.author || "", cover_url: b.coverUrl || null, status: b.status || "to_read", source_key: b.sourceKey || null, created_at: toIso(b.createdAt), finished_at: toIso(b.finishedAt), notes: b.notes || "" });
   const memFromRow = (r) => ({ id: r.id, word: r.word || "", aisle: r.aisle || "other" });
   const sortCats = () => { cats = cats.slice().sort((a, b) => a.position - b.position || a.name.localeCompare(b.name)); };
@@ -241,13 +251,14 @@
   let needsReload = false;
   let offlineSession = false;
 
-  function saveLocal() { if (userId && loaded) LS.set(cacheKey(), { cats, tasks, shop, mem, books, savedAt: Date.now() }); }
+  function saveLocal() { if (userId && loaded) LS.set(cacheKey(), { cats, tasks, shop, mem, books, wish, savedAt: Date.now() }); }
   function loadLocal() {
     const c = LS.get(cacheKey(), null);
     if (!c) return false;
     cats = Array.isArray(c.cats) ? c.cats : []; tasks = Array.isArray(c.tasks) ? c.tasks : [];
     shop = Array.isArray(c.shop) ? c.shop : []; mem = Array.isArray(c.mem) ? c.mem : [];
     books = Array.isArray(c.books) ? c.books : [];
+    wish = Array.isArray(c.wish) ? c.wish : [];
     sortCats(); loaded = true;
     return true;
   }
@@ -280,6 +291,7 @@
     shopping_items: { get: () => shop, set: (a) => { shop = a; }, from: (r) => shopFromRow(r) },
     shopping_memory: { get: () => mem, set: (a) => { mem = a; }, from: (r) => memFromRow(r) },
     books: { get: () => books, set: (a) => { books = a; }, from: (r) => bookFromRow(r) },
+    wishlist: { get: () => wish, set: (a) => { wish = a; }, from: (r) => wishFromRow(r) },
   };
   function applyOpLocal(op) {
     const T = TABLES[op.table];
@@ -331,14 +343,15 @@
   async function loadAll(quiet) {
     if (!userId || offlineSession) return;
     if (!quiet && !loaded) setStatus("", "Loading your tasks…");
-    let c, t, si, sm, bk;
+    let c, t, si, sm, bk, wl;
     try {
-      [c, t, si, sm, bk] = await Promise.all([
+      [c, t, si, sm, bk, wl] = await Promise.all([
         sb.from("categories").select("*").order("position", { ascending: true }),
         sb.from("tasks").select("*").order("created_at", { ascending: true }),
         sb.from("shopping_items").select("*").order("created_at", { ascending: true }),
         sb.from("shopping_memory").select("*"),
         sb.from("books").select("*").order("created_at", { ascending: true }),
+        sb.from("wishlist").select("*").order("created_at", { ascending: true }),
       ]);
     } catch (e) { c = { error: e }; t = { error: e }; }
     if (c.error || t.error) {
@@ -355,6 +368,7 @@
     if (si && !si.error) shop = si.data.map(shopFromRow);
     if (sm && !sm.error) mem = sm.data.map(memFromRow);
     if (bk && !bk.error) books = bk.data.map(bookFromRow);
+    if (wl && !wl.error) wish = wl.data.map(wishFromRow);
     outbox.forEach(applyOpLocal);
     loaded = true;
     if (!cats.length && !tasks.length && !seeding && !outbox.length) seedDefaults();
@@ -380,6 +394,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "shopping_items" }, (p) => applyChange("shopping_items", p))
       .on("postgres_changes", { event: "*", schema: "public", table: "shopping_memory" }, (p) => applyChange("shopping_memory", p))
       .on("postgres_changes", { event: "*", schema: "public", table: "books" }, (p) => applyChange("books", p))
+      .on("postgres_changes", { event: "*", schema: "public", table: "wishlist" }, (p) => applyChange("wishlist", p))
       .subscribe((status) => {
         if (status === "SUBSCRIBED" && loaded) statusLine();
       });
@@ -595,9 +610,14 @@
       { v: { type: "calendar" }, name: "Calendar", icon: ICONS.cal, count: 0 },
       { v: { type: "shopping" }, name: "Shopping", icon: ICONS.cart, count: shop.filter((i) => !i.done).length },
       { v: { type: "books" }, name: "Books", icon: ICONS.book, count: books.filter((b) => b.status === "to_read").length },
+      { v: { type: "wishlist" }, name: "Wishlist", icon: ICONS.gift, count: wish.filter((w) => w.status === "want").length },
     ];
     const nv = $("nav-views"); nv.innerHTML = "";
-    views.forEach((it) => nv.appendChild(navButton(it.v, it.name, it.icon, null, it.count, it.alert)));
+    views.forEach((it) => {
+      const b = navButton(it.v, it.name, it.icon, null, it.count, it.alert);
+      if (it.v.type === "wishlist") decorateWishTile(b);
+      nv.appendChild(b);
+    });
     const nc = $("nav-cats"); nc.innerHTML = "";
     cats.forEach((c) => nc.appendChild(navButton({ type: "cat", id: c.id }, c.name, null, c.color, open.filter((t) => t.categoryId === c.id).length, false, true)));
     const orphan = open.filter((t) => !catById(t.categoryId)).length;
@@ -613,7 +633,7 @@
     if (color) { applyPair(b, color); b.appendChild(el("span", "dot")); }
     b.appendChild(el("span", "name", name));
     if (isCat) b.appendChild(el("span", "count" + (count ? "" : " zero"), String(count)));
-    else if (count || v.type === "all" || v.type === "today" || v.type === "week" || v.type === "shopping" || v.type === "books") b.appendChild(el("span", "count" + (alert ? " alert" : "") + (count ? "" : " zero"), String(count)));
+    else if (count || v.type === "all" || v.type === "today" || v.type === "week" || v.type === "shopping" || v.type === "books" || v.type === "wishlist") b.appendChild(el("span", "count" + (alert ? " alert" : "") + (count ? "" : " zero"), String(count)));
     b.addEventListener("click", () => { view = v; savePrefs(); render(); if (isPhone()) enterView(); });
     return b;
   }
@@ -741,20 +761,23 @@
     const isCal = view.type === "calendar";
     const isShop = view.type === "shopping";
     const isBooks = view.type === "books";
-    $("view-title").textContent = isBooks ? "Books" : isShop ? "Shopping" : isCal ? "Calendar" : view.type === "today" ? "Today" : view.type === "week" ? "Next 7 days" : view.type === "cat" ? (c ? c.name : "No category") : "All tasks";
+    const isWish = view.type === "wishlist";
+    $("view-title").textContent = isWish ? "Wishlist" : isBooks ? "Books" : isShop ? "Shopping" : isCal ? "Calendar" : view.type === "today" ? "Today" : view.type === "week" ? "Next 7 days" : view.type === "cat" ? (c ? c.name : "No category") : "All tasks";
     $("btn-edit-cat").hidden = !c;
-    $("list-mode").hidden = isCal || isShop || isBooks;
+    $("list-mode").hidden = isCal || isShop || isBooks || isWish;
     $("books-mode").hidden = !isBooks;
+    $("wish-mode").hidden = !isWish;
     $("cal-mode").hidden = !isCal;
     $("shop-mode").hidden = !isShop;
     $("btn-add").hidden = isShop;
-    $("btn-add").innerHTML = isBooks ? '<span aria-hidden="true">+</span> Add book' : '<span aria-hidden="true">+</span> Add task';
+    $("btn-add").innerHTML = isWish ? '<span aria-hidden="true">+</span> Add link' : isBooks ? '<span aria-hidden="true">+</span> Add book' : '<span aria-hidden="true">+</span> Add task';
     $("main").classList.toggle("wide", isCal);
 
     if (!loaded) { $("list").innerHTML = '<li class="loading">Loading your tasks…</li>'; return; }
     if (isCal) { renderCalendar(); return; }
     if (isShop) { renderShopping(); return; }
     if (isBooks) { renderBooks(); return; }
+    if (isWish) { renderWishlist(); return; }
 
     const scoped = tasks.filter((t) => inView(t, view));
     const open = scoped.filter((t) => !t.done);
@@ -1193,6 +1216,348 @@
     deleteBook(b);
   });
 
+  // ---------- wishlist ----------
+  const CUR = {
+    PLN: { pre: "", post: " zł", dec: ",", th: " " }, EUR: { pre: "", post: " €", dec: ",", th: " " },
+    USD: { pre: "$", post: "", dec: ".", th: "," }, SGD: { pre: "S$", post: "", dec: ".", th: "," },
+    GBP: { pre: "£", post: "", dec: ".", th: "," }, CHF: { pre: "", post: " CHF", dec: ".", th: "'" },
+  };
+  const WANT = { 3: "Really want it", 2: "Quite want it", 1: "Want it a little" };
+  function fmtPrice(n, cur) {
+    if (n == null || !isFinite(n)) return "";
+    const c = CUR[cur] || { pre: "", post: cur ? " " + cur : "", dec: ".", th: "," };
+    const cents = Math.round(n * 100), whole = Math.floor(cents / 100), frac = cents % 100;
+    const w = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, c.th);
+    return c.pre + w + (frac ? c.dec + String(frac).padStart(2, "0") : "") + c.post;
+  }
+  function defaultCurrency() {
+    const last = wish.filter((w) => w.currency).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+    return last ? last.currency : "PLN";
+  }
+  // "349 zł", "1 299,99", "$49.99", "S$120", "49,99 €" -> { price, currency }
+  function parsePrice(text) {
+    const t = String(text || "").trim();
+    if (!t) return { price: null, currency: null };
+    const lo = t.toLowerCase();
+    let cur = null;
+    if (/zł|\bzl\b|pln/.test(lo)) cur = "PLN";
+    else if (/s\$|sgd/.test(lo)) cur = "SGD";
+    else if (/€|eur/.test(lo)) cur = "EUR";
+    else if (/£|gbp/.test(lo)) cur = "GBP";
+    else if (/chf/.test(lo)) cur = "CHF";
+    else if (/\$|usd/.test(lo)) cur = "USD";
+    else { const m = /\b([a-z]{3})\b/i.exec(t); if (m) cur = m[1].toUpperCase(); }
+    let d = ((t.match(/\d[\d\s.,'  ]*/) || [""])[0]).replace(/[\s'  ]/g, "").replace(/[.,]+$/, "");
+    if (!d) return { price: null, currency: cur };
+    const lc = d.lastIndexOf(","), ld = d.lastIndexOf(".");
+    if (lc > -1 && ld > -1) d = lc > ld ? d.replace(/\./g, "").replace(",", ".") : d.replace(/,/g, "");
+    else if (lc > -1) d = /,\d{1,2}$/.test(d) ? d.slice(0, lc).replace(/,/g, "") + "." + d.slice(lc + 1) : d.replace(/,/g, "");
+    else if (ld > -1) {
+      if ((d.match(/\./g) || []).length > 1) d = /\.\d{1,2}$/.test(d) ? d.slice(0, ld).replace(/\./g, "") + "." + d.slice(ld + 1) : d.replace(/\./g, "");
+      else if (/^\d{1,3}\.\d{3}$/.test(d) && (cur === "PLN" || cur === "EUR")) d = d.replace(".", "");
+    }
+    const n = parseFloat(d);
+    return { price: isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null, currency: cur };
+  }
+  function wishTotals(list) {
+    const by = {};
+    list.forEach((w) => { if (w.price != null) { const c = w.currency || "PLN"; by[c] = (by[c] || 0) + w.price; } });
+    return Object.keys(by).sort((a, b) => by[b] - by[a]).map((c) => fmtPrice(by[c], c));
+  }
+  const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } };
+  const httpUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : null; } catch (e) { return null; } };
+  function wantDots(p) {
+    const s = el("span", "trio");
+    s.setAttribute("role", "img"); s.setAttribute("aria-label", WANT[p] || WANT[2]); s.title = WANT[p] || WANT[2];
+    for (let i = 1; i <= 3; i++) s.appendChild(el("i", i <= p ? "on" : null));
+    return s;
+  }
+  function wishPhoto(w, size) {
+    const box = el("div", "wphoto" + (size ? " " + size : ""));
+    const fallback = () => {
+      box.innerHTML = ""; box.classList.add("gen");
+      const pair = PAIRS[Math.abs(hashStr(w.name || w.shop || "x")) % PAIRS.length];
+      box.style.setProperty("--c", pair.sq); box.style.setProperty("--c2", pair.ci); box.style.setProperty("--ct", inkOn(pair.sq));
+      box.appendChild(el("span", "gen-dot"));
+      box.appendChild(el("span", "gen-initial", ((w.name || w.shop || "?").trim().charAt(0) || "?").toUpperCase()));
+    };
+    if (w.imageUrl) {
+      const img = document.createElement("img");
+      img.alt = ""; img.loading = "lazy"; img.decoding = "async"; img.referrerPolicy = "no-referrer";
+      img.src = w.imageUrl;
+      img.addEventListener("error", fallback);
+      img.addEventListener("load", () => { if (img.naturalWidth < 20) fallback(); });
+      box.appendChild(img);
+    } else fallback();
+    return box;
+  }
+  // Phone home: the Wishlist tile spans the row and shows a few photos and the total.
+  function decorateWishTile(b) {
+    b.classList.add("wish-tile");
+    const want = wish.filter((w) => w.status === "want").sort((a, c) => (c.createdAt || 0) - (a.createdAt || 0));
+    const tot = wishTotals(want);
+    if (tot.length) b.appendChild(el("span", "wish-total", tot.slice(0, 2).join(" + ")));
+    if (want.length) {
+      const th = el("span", "wish-thumbs"); th.setAttribute("aria-hidden", "true");
+      want.slice(0, 4).forEach((w) => th.appendChild(wishPhoto(w, "tiny")));
+      b.appendChild(th);
+    }
+  }
+
+  function renderWishlist() {
+    const want = wish.filter((w) => w.status === "want");
+    const bought = wish.filter((w) => w.status === "bought");
+    const tot = wishTotals(want);
+    $("view-sub").textContent = want.length + " wanted" + (tot.length ? " · " + tot.join(" + ") : "");
+    document.querySelectorAll("#wish-mode .shelf-tabs button").forEach((bt) => {
+      bt.setAttribute("aria-selected", bt.dataset.wtab === wishTab ? "true" : "false");
+      bt.querySelector("span").textContent = String((bt.dataset.wtab === "want" ? want : bought).length || "");
+    });
+    const inTab = wishTab === "bought" ? bought : want;
+    const tags = [];
+    inTab.forEach((w) => { if (w.tag && !tags.some((t) => t.toLowerCase() === w.tag.toLowerCase())) tags.push(w.tag); });
+    tags.sort((a, b) => a.localeCompare(b));
+    if (wishTag && !tags.some((t) => t.toLowerCase() === wishTag.toLowerCase())) wishTag = "";
+    const chips = $("wish-tags"); chips.innerHTML = ""; chips.hidden = !tags.length;
+    [""].concat(tags).forEach((t) => {
+      const c = el("button", "chip", t || "All"); c.type = "button";
+      c.setAttribute("aria-pressed", (wishTag || "").toLowerCase() === t.toLowerCase() ? "true" : "false");
+      c.addEventListener("click", () => { wishTag = t; savePrefs(); renderWishlist(); });
+      chips.appendChild(c);
+    });
+    const list = inTab.filter((w) => !wishTag || w.tag.toLowerCase() === wishTag.toLowerCase())
+      .sort((a, b) => wishTab === "bought" ? (b.boughtAt || 0) - (a.boughtAt || 0) : (b.createdAt || 0) - (a.createdAt || 0));
+    const grid = $("wish-grid"); grid.innerHTML = "";
+    list.forEach((w) => grid.appendChild(wishCard(w)));
+    if (wishTab === "want") {
+      const add = el("button", "wcard wadd"); add.type = "button";
+      add.innerHTML = '<span class="add-plus" aria-hidden="true">+</span><span>Add link</span>';
+      add.addEventListener("click", () => openWishEditor(null));
+      grid.appendChild(add);
+    } else if (!list.length) grid.appendChild(el("p", "next-empty shelf-empty", "Things you buy will collect here."));
+  }
+  function wishCard(w) {
+    const b = el("button", "wcard"); b.type = "button";
+    const price = w.price != null ? fmtPrice(w.price, w.currency) : "";
+    b.setAttribute("aria-label", [w.name, price, w.shop].filter(Boolean).join(", "));
+    b.appendChild(wishPhoto(w));
+    const t = el("span", "wtext");
+    t.appendChild(el("span", "wname", w.name));
+    t.appendChild(el("span", "wshop", (w.shop || w.tag || "").toUpperCase()));
+    const row = el("span", "wrow");
+    row.appendChild(el("span", "wprice", price));
+    if (w.status === "bought") row.appendChild(el("span", "wshop", w.boughtAt ? "BOUGHT " + shortDate(w.boughtAt) : "BOUGHT"));
+    else row.appendChild(wantDots(w.want));
+    t.appendChild(row);
+    b.appendChild(t);
+    b.addEventListener("click", () => openWish(w));
+    return b;
+  }
+  const shortDate = (ms) => { const d = new Date(ms); return String(d.getDate()).padStart(2, "0") + "." + String(d.getMonth() + 1).padStart(2, "0"); };
+  document.querySelectorAll("#wish-mode .shelf-tabs button").forEach((bt) => bt.addEventListener("click", () => { wishTab = bt.dataset.wtab; wishTag = ""; savePrefs(); renderWishlist(); }));
+
+  function addWish(data) {
+    const w = Object.assign({ id: uid("w"), status: "want", createdAt: Date.now(), boughtAt: null, want: 2, tag: "", notes: "", shop: "" }, data);
+    wish = wish.concat([w]);
+    if (wishTab !== "want") wishTab = "want";
+    if (wishTag && (w.tag || "").toLowerCase() !== wishTag.toLowerCase()) wishTag = "";
+    savePrefs(); render();
+    enqueue({ kind: "upsert", table: "wishlist", rows: [wishToRow(w)] });
+    toast("Added to Wishlist: " + clip(w.name, 30));
+  }
+  function updateWish(id, patch) {
+    const cur = wish.find((x) => x.id === id);
+    if (!cur) return;
+    const next = Object.assign({}, cur, patch);
+    wish = wish.map((x) => (x.id === id ? next : x)); render();
+    enqueue({ kind: "upsert", table: "wishlist", rows: [wishToRow(next)] });
+  }
+  function deleteWish(w) {
+    const copy = Object.assign({}, w);
+    wish = wish.filter((x) => x.id !== w.id); render();
+    enqueue({ kind: "delete", table: "wishlist", ids: [w.id] });
+    toast("Deleted: " + clip(w.name, 30), () => { wish = wish.concat([copy]); render(); enqueue({ kind: "upsert", table: "wishlist", rows: [wishToRow(copy)] }); });
+  }
+
+  // Item sheet
+  let openWishItem = null;
+  function openWish(w) {
+    openWishItem = w;
+    const ph = $("wi-photo"); ph.innerHTML = ""; ph.appendChild(wishPhoto(w, "large"));
+    $("wi-meta").textContent = [w.tag, "Added " + shortDate(w.createdAt)].filter(Boolean).join(" · ").toUpperCase();
+    const wd = $("wi-want"); wd.innerHTML = ""; if (w.status === "want") wd.appendChild(wantDots(w.want));
+    $("wi-name").textContent = w.name;
+    $("wi-price").textContent = w.price != null ? fmtPrice(w.price, w.currency) : "";
+    $("wi-shop").textContent = (w.shop || "").toUpperCase();
+    $("wi-note").textContent = w.notes || "";
+    $("wi-note-box").hidden = !w.notes;
+    const open = $("wi-open");
+    if (w.url) { open.href = w.url; open.hidden = false; } else { open.removeAttribute("href"); open.hidden = true; }
+    $("wi-bought").textContent = w.status === "bought" ? "Move back to Want" : "✓ Mark as bought";
+    $("wi-bought").classList.toggle("is-bought", w.status === "bought");
+    openOverlay("wish-overlay", w.url ? "wi-open" : "wi-bought");
+  }
+  $("wi-bought").addEventListener("click", () => {
+    const w = openWishItem; if (!w) return;
+    closeOverlay("wish-overlay");
+    if (w.status === "bought") { updateWish(w.id, { status: "want", boughtAt: null }); toast("Moved back to Want"); return; }
+    updateWish(w.id, { status: "bought", boughtAt: Date.now() });
+    toast("Moved to Bought: " + clip(w.name, 28), () => updateWish(w.id, { status: "want", boughtAt: null }));
+  });
+  $("wi-edit").addEventListener("click", () => { const w = openWishItem; closeOverlay("wish-overlay"); if (w) openWishEditor(w); });
+  $("wi-close").addEventListener("click", () => closeOverlay("wish-overlay"));
+
+  // Add / edit sheet
+  let editingWish = null;
+  let autoVals = {};
+  let lastReadUrl = "";
+  let previewSeq = 0;
+  function fitArea(ta) {
+    ta.style.height = "";
+    if (!ta.offsetParent) return;
+    const cap = Math.round(window.innerHeight * 0.35);
+    const h = Math.min(ta.scrollHeight + 2, cap);
+    if (h > ta.offsetHeight) ta.style.height = h + "px";
+    ta.style.overflowY = ta.scrollHeight + 2 > cap ? "auto" : "hidden";
+  }
+  function refreshTagList() {
+    const dl = $("we-tags"); dl.innerHTML = "";
+    const seen = new Set();
+    wish.forEach((w) => { const k = (w.tag || "").toLowerCase(); if (k && !seen.has(k)) { seen.add(k); const o = document.createElement("option"); o.value = w.tag; dl.appendChild(o); } });
+  }
+  function openWishEditor(w, prefillUrl) {
+    if (!userId) return;
+    editingWish = w; autoVals = {}; lastReadUrl = w && w.url ? w.url : ""; previewSeq++;
+    $("we-heading").textContent = w ? "Edit item" : "Add to wishlist";
+    $("we-delete").hidden = !w;
+    $("we-url").value = w ? (w.url || "") : (prefillUrl || "");
+    $("we-name").value = w ? w.name : "";
+    $("we-price").value = w && w.price != null ? fmtPrice(w.price, w.currency) : "";
+    $("we-tag").value = w ? (w.tag || "") : (wishTag || "");
+    $("we-want-" + (w ? (Number(w.want) || 2) : 2)).checked = true;
+    $("we-notes").value = w ? (w.notes || "") : "";
+    $("we-image").value = w ? (w.imageUrl || "") : "";
+    document.querySelector(".we-more").open = false;
+    $("we-found").hidden = true;
+    $("we-paste").hidden = !(navigator.clipboard && navigator.clipboard.readText) || !!w;
+    refreshTagList();
+    openOverlay("wish-edit-overlay", w ? "we-name" : "we-url");
+    fitArea($("we-notes"));
+    if (prefillUrl) readLink();
+  }
+  const extractUrl = (text) => { const m = /https?:\/\/[^\s<>"']+/i.exec(text || ""); return m ? m[0].replace(/[),.;!?]+$/, "") : null; };
+  function linkFromField() {
+    const raw = $("we-url").value.trim();
+    let url = extractUrl(raw);
+    if (!url && /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(raw)) url = "https://" + raw;
+    return url ? httpUrl(url) : null;
+  }
+  function fillIfUntouched(id, val) {
+    if (val == null || val === "") return;
+    const f = $(id);
+    if (!f.value.trim() || f.value === autoVals[id]) { f.value = val; autoVals[id] = val; }
+  }
+  function showFound(state, url, info) {
+    const host = hostOf(url);
+    $("we-found").hidden = false;
+    $("we-found").dataset.state = state;
+    const th = $("we-thumb"); th.innerHTML = "";
+    th.appendChild(wishPhoto({ name: (info && info.name) || host, imageUrl: info && info.image }, "small"));
+    const msg = {
+      reading: ["READING " + host.toUpperCase() + "…", "", "Getting the name, photo and price."],
+      found: ["✓ FOUND ON " + host.toUpperCase(), (info && info.name) || "", "Name and photo filled in. Change anything below."],
+      failed: ["COULDN'T READ " + host.toUpperCase(), "", "This shop doesn't share its details. Type the name and price yourself."],
+      offline: ["YOU'RE OFFLINE", "", "Fill it in yourself. It saves and syncs when you're back online."],
+    }[state];
+    $("we-status").textContent = msg[0];
+    $("we-found-name").textContent = msg[1];
+    $("we-found-name").hidden = !msg[1];
+    $("we-found-hint").textContent = msg[2];
+  }
+  async function readLink() {
+    const url = linkFromField();
+    if (!url) return;
+    const raw = $("we-url").value.trim();
+    if (raw !== url) {
+      // Shared text like "Great shoes https://…": keep the words as a name suggestion.
+      const words = raw.replace(/https?:\/\/\S+/i, "").replace(/\s+/g, " ").trim();
+      if (words.length > 2 && words.length < 120) fillIfUntouched("we-name", words);
+      $("we-url").value = url;
+    }
+    if (url === lastReadUrl) return;
+    lastReadUrl = url;
+    const seq = ++previewSeq;
+    if (isOffline() || offlineSession) { showFound("offline", url); return; }
+    showFound("reading", url);
+    let info = null;
+    try {
+      const { data } = await sb.auth.getSession();
+      const token = data && data.session && data.session.access_token;
+      const r = await fetch("/api/preview?url=" + encodeURIComponent(url), { headers: token ? { Authorization: "Bearer " + token } : {} });
+      if (r.ok) info = await r.json();
+    } catch (e) { info = null; }
+    if (seq !== previewSeq) return;
+    if (!info || (!info.name && !info.image)) { showFound(isOffline() ? "offline" : "failed", url); if (!$("we-name").value.trim()) $("we-name").focus(); return; }
+    fillIfUntouched("we-name", info.name);
+    if (info.price != null) fillIfUntouched("we-price", fmtPrice(info.price, info.currency || defaultCurrency()));
+    fillIfUntouched("we-image", info.image);
+    showFound("found", url, info);
+  }
+  $("we-url").addEventListener("paste", () => setTimeout(readLink, 0));
+  $("we-url").addEventListener("change", readLink);
+  $("we-url").addEventListener("blur", readLink);
+  $("we-url").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); readLink(); $("we-name").focus(); } });
+  $("we-paste").addEventListener("click", async () => {
+    try {
+      const txt = await navigator.clipboard.readText();
+      if (txt) { $("we-url").value = txt.trim(); readLink(); }
+    } catch (e) { $("we-url").focus(); }
+  });
+  $("we-notes").addEventListener("input", () => fitArea($("we-notes")));
+  function tidyTag(t) {
+    t = String(t || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!t) return "";
+    const same = wish.find((w) => w.tag && w.tag.toLowerCase() === t.toLowerCase());
+    return same ? same.tag : t.charAt(0).toUpperCase() + t.slice(1);
+  }
+  $("we-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const url = linkFromField();
+    let name = $("we-name").value.replace(/\s+/g, " ").trim();
+    if (!name && url) name = hostOf(url);
+    if (!name) { $("we-url").focus(); toast("Paste a link or type a name first"); return; }
+    const pr = parsePrice($("we-price").value);
+    const data = {
+      name: name.slice(0, 300), url, imageUrl: httpUrl($("we-image").value.trim()), shop: url ? hostOf(url) : (editingWish ? editingWish.shop : ""),
+      price: pr.price, currency: pr.price != null ? (pr.currency || defaultCurrency()) : null,
+      tag: tidyTag($("we-tag").value), want: Number((document.querySelector('input[name="we-want"]:checked') || {}).value) || 2,
+      notes: $("we-notes").value.trim().slice(0, 4000),
+    };
+    previewSeq++;
+    closeOverlay("wish-edit-overlay");
+    if (editingWish) { updateWish(editingWish.id, data); toast("Saved"); }
+    else addWish(data);
+  });
+  $("we-cancel").addEventListener("click", () => { previewSeq++; closeOverlay("wish-edit-overlay"); });
+  $("we-delete").addEventListener("click", () => { const w = editingWish; previewSeq++; closeOverlay("wish-edit-overlay"); if (w) deleteWish(w); });
+
+  // Opening the app with ?wish=<link> (e.g. from an iPhone Shortcut) starts a new Wishlist item.
+  let pendingWish = (() => {
+    try {
+      const q = new URLSearchParams(location.search);
+      const v = q.get("wish") || q.get("url") || q.get("text");
+      if (v) history.replaceState(history.state, "", location.pathname + location.hash);
+      return v || null;
+    } catch (e) { return null; }
+  })();
+  function consumeWishParam() {
+    if (!pendingWish || !userId) return;
+    const v = pendingWish; pendingWish = null;
+    view = { type: "wishlist" }; wishTab = "want"; savePrefs(); render();
+    if (isPhone()) enterView();
+    openWishEditor(null, v);
+  }
+
   // ---------- phone: home tiles and drill-in ----------
   const isPhone = () => window.matchMedia("(max-width: 820px)").matches;
   function enterView() {
@@ -1448,6 +1813,7 @@
     const onHome = isPhone() && !document.body.classList.contains("in-view");
     if (view.type === "shopping" && !onHome) { $("shop-input").focus(); return; }
     if (view.type === "books" && !onHome) { openBookAdd(); return; }
+    if (view.type === "wishlist" && !onHome) { openWishEditor(null); return; }
     let categoryId = null, due = null;
     if (!onHome) {
       if (view.type === "cat" && view.id !== "none") categoryId = view.id;
@@ -1702,6 +2068,7 @@
     loadLocal();
     render();
     statusLine();
+    consumeWishParam();
     if (!offlineSession) { await loadAll(loaded); subscribe(); flush(); }
   }
 
