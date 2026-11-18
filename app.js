@@ -637,7 +637,11 @@
     tops.forEach((c) => {
       const subs = subsOf(c.id);
       const pb = navButton({ type: "cat", id: c.id }, c.name, null, c.color, open.filter((t) => inCatTree(t, c.id)).length, false, true);
-      if (subs.length) { pb.classList.add("has-subs"); nc.appendChild(splitTile(c, subs, open)); }
+      if (subs.length) {
+        pb.classList.add("has-subs");
+        nc.appendChild(stackTile(c, subs, open));
+        if (openCats.indexOf(c.id) !== -1) nc.appendChild(subDrawer(c, subs, open));
+      }
       nc.appendChild(pb);
       subs.forEach((sc) => {
         const b = navButton({ type: "cat", id: c.id, sub: sc.id }, sc.name, null, c.color, open.filter((t) => t.categoryId === sc.id).length, false, true);
@@ -648,88 +652,122 @@
     const orphan = open.filter((t) => !catById(t.categoryId)).length;
     if (orphan > 0) nc.appendChild(navButton({ type: "cat", id: "none" }, "No category", null, "#DEDAD2", orphan, false, true));
     $("cat-count").textContent = String(tops.length).padStart(2, "0") + (tops.length === 1 ? " LIST" : " LISTS");
+    aimNotches();
     $("brand-date").textContent = new Date().toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase() + " " + String(new Date().getDate()).padStart(2, "0") + "." + String(new Date().getMonth() + 1).padStart(2, "0");
   }
-  // Phone home: a category with sub-categories looks like a stack of tiles.
-  // Tap it and it unfolds into one wide tile split into smaller blocks; tap the top bar to fold it again.
+  // Phone home: a category with sub-categories looks like a stack of tiles. Tapping it opens a drawer
+  // straight underneath with one block per sub-category; tapping it again closes the drawer.
+  // Animations only slide, fade and clip (no resizing), so they stay smooth on the phone.
   const SPLIT_MAX = 6;
-  let justOpened = null;
-  function splitTile(c, subs, open) {
+  const EASE = "cubic-bezier(.32,.72,0,1)";
+  let animating = false;
+  const reduceMotion = () => !Element.prototype.animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function stackTile(c, subs, open) {
     const isOpen = openCats.indexOf(c.id) !== -1;
     const total = open.filter((t) => inCatTree(t, c.id)).length;
+    const b = el("button", "cat-stack" + (isOpen ? " is-open" : "")); b.type = "button";
+    b.dataset.key = c.id;
+    applyPair(b, c.color);
+    b.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    b.setAttribute("aria-label", c.name + ", " + total + " open " + (total === 1 ? "task" : "tasks") + ", " + subs.length + " sub-categories");
+    const top = el("span", "stack-inside");
+    top.appendChild(el("span", null, subs.length + " INSIDE"));
+    top.appendChild(el("span", "stack-chev"));
+    b.appendChild(top);
+    b.appendChild(el("span", "stack-name", c.name));
+    b.appendChild(el("span", "stack-count", String(total)));
+    b.addEventListener("click", () => toggleDrawer(c.id));
+    return b;
+  }
+  function subDrawer(c, subs, open) {
+    const d = el("div", "cat-drawer");
+    d.dataset.key = "drawer-" + c.id;
+    applyPair(d, c.color);
+    d.style.setProperty("--blk", inkOn(c.color) === "#FFFFFF" ? "rgba(255,255,255,.16)" : "rgba(255,255,255,.5)");
+    d.appendChild(el("span", "drawer-notch"));
     const go = (v) => { view = v; savePrefs(); render(); if (isPhone()) enterView(); };
-    const toggle = () => {
-      const before = navSnapshot();
-      openCats = isOpen ? openCats.filter((x) => x !== c.id) : openCats.concat([c.id]);
-      justOpened = isOpen ? null : c.id;
-      savePrefs(); renderNav(); justOpened = null;
-      navAnimate(before, c.id);
-      const again = document.querySelector('.cat-split[data-id="' + c.id + '"] .split-head');
-      if (again) again.focus({ preventScroll: true });
+    const grid = el("div", "split-grid");
+    const block = (label, n, v, cls) => {
+      const b = el("button", "split-blk" + (cls ? " " + cls : "")); b.type = "button";
+      b.setAttribute("aria-label", label + (n != null ? ", " + n + " open " + (n === 1 ? "task" : "tasks") : ""));
+      b.appendChild(el("span", "blk-name", label));
+      if (n != null) b.appendChild(el("span", "blk-count" + (n ? "" : " zero"), String(n)));
+      b.addEventListener("click", () => go(v));
+      grid.appendChild(b);
     };
-    const box = el("div", "cat-split" + (isOpen ? " is-open" : "") + (justOpened === c.id ? " opening" : ""));
-    box.dataset.id = c.id; box.dataset.key = c.id;
-    applyPair(box, c.color);
-    box.style.setProperty("--blk", inkOn(c.color) === "#FFFFFF" ? "rgba(255,255,255,.16)" : "rgba(255,255,255,.5)");
-    const head = el("button", "split-head"); head.type = "button";
-    head.setAttribute("aria-expanded", isOpen ? "true" : "false");
-    head.setAttribute("aria-label", c.name + ", " + total + " open " + (total === 1 ? "task" : "tasks") + ", " + subs.length + " sub-categories. " + (isOpen ? "Tap to fold." : "Tap to show them."));
-    if (!isOpen) head.appendChild(el("span", "split-inside", subs.length + " INSIDE"));
-    head.appendChild(el("span", "split-name", c.name));
-    head.appendChild(el("span", "split-count", String(total)));
-    if (isOpen) { const chev = el("span", "split-chev"); chev.setAttribute("aria-hidden", "true"); head.appendChild(chev); }
-    head.addEventListener("click", toggle);
-    box.appendChild(head);
-    if (isOpen) {
-      const grid = el("div", "split-grid");
-      const block = (label, n, v, cls) => {
-        const b = el("button", "split-blk" + (cls ? " " + cls : "")); b.type = "button";
-        b.setAttribute("aria-label", label + (n != null ? ", " + n + " open " + (n === 1 ? "task" : "tasks") : ""));
-        b.appendChild(el("span", "blk-name", label));
-        if (n != null) b.appendChild(el("span", "blk-count" + (n ? "" : " zero"), String(n)));
-        b.addEventListener("click", () => go(v));
-        grid.appendChild(b);
-      };
-      block("All", total, { type: "cat", id: c.id }, "all");
-      const room = SPLIT_MAX - 1;
-      const shown = subs.length > room ? subs.slice(0, room - 1) : subs;
-      shown.forEach((sc) => block(sc.name, open.filter((t) => t.categoryId === sc.id).length, { type: "cat", id: c.id, sub: sc.id }));
-      if (subs.length > shown.length) block("+" + (subs.length - shown.length) + " more", null, { type: "cat", id: c.id }, "more");
-      box.appendChild(grid);
-    }
-    return box;
+    block("All", open.filter((t) => inCatTree(t, c.id)).length, { type: "cat", id: c.id }, "all");
+    const room = SPLIT_MAX - 1;
+    const shown = subs.length > room ? subs.slice(0, room - 1) : subs;
+    shown.forEach((sc) => block(sc.name, open.filter((t) => t.categoryId === sc.id).length, { type: "cat", id: c.id, sub: sc.id }));
+    if (subs.length > shown.length) block("+" + (subs.length - shown.length) + " more", null, { type: "cat", id: c.id }, "more");
+    d.appendChild(grid);
+    return d;
   }
-  // Smooth fold/unfold: remember where every tile was, then glide them from there to their new place.
-  function navSnapshot() {
-    const m = new Map();
-    document.querySelectorAll("#nav-cats > *").forEach((n) => { if (n.offsetParent && n.dataset.key) m.set(n.dataset.key, n.getBoundingClientRect()); });
-    const ac = $("btn-add-cat"); if (ac && ac.offsetParent) m.set("addcat", ac.getBoundingClientRect());
-    return m;
-  }
-  function navAnimate(before, morphKey) {
-    if (!Element.prototype.animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const ease = "cubic-bezier(.22,.9,.24,1)", dur = 460;
-    const nodes = Array.from(document.querySelectorAll("#nav-cats > *"));
-    if ($("btn-add-cat")) nodes.push($("btn-add-cat"));
-    nodes.forEach((n) => {
-      if (!n.offsetParent) return;
-      const key = n.id === "btn-add-cat" ? "addcat" : n.dataset.key;
-      const a = key && before.get(key);
-      if (!a) return;
-      const b = n.getBoundingClientRect();
-      const dx = a.left - b.left, dy = a.top - b.top;
-      if (key === morphKey) {
-        n.classList.add("morphing");
-        const anim = n.animate([
-          { transform: "translate(" + dx + "px," + dy + "px)", width: a.width + "px", height: a.height + "px" },
-          { transform: "translate(0,0)", width: b.width + "px", height: b.height + "px" },
-        ], { duration: dur, easing: ease });
-        const done = () => n.classList.remove("morphing");
-        anim.onfinish = done; anim.oncancel = done;
-      } else if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-        n.animate([{ transform: "translate(" + dx + "px," + dy + "px)" }, { transform: "translate(0,0)" }], { duration: dur, easing: ease });
-      }
+  // Point the drawer's little notch at its tile (left or right column).
+  function aimNotches() {
+    document.querySelectorAll("#nav-cats .cat-drawer").forEach((d) => {
+      const tile = document.querySelector('#nav-cats .cat-stack[data-key="' + d.dataset.key.slice(7) + '"]');
+      if (!tile || !d.offsetParent) return;
+      const tr = tile.getBoundingClientRect(), dr = d.getBoundingClientRect();
+      d.style.setProperty("--notch", Math.round(tr.left - dr.left + tr.width / 2) + "px");
     });
+  }
+  // Everything below a given y on the home screen: tiles, the New category button and the footer.
+  function belowNodes(y) {
+    const list = Array.from(document.querySelectorAll("#nav-cats > *")).concat(Array.from(document.querySelectorAll("#btn-add-cat, .rail .status, .rail .account")));
+    return list.filter((n) => n.offsetParent && !n.classList.contains("cat-drawer") && n.getBoundingClientRect().top >= y - 1);
+  }
+  function toggleDrawer(id) {
+    if (animating) return;
+    const wasOpen = openCats.indexOf(id) !== -1;
+    const finish = () => {
+      openCats = wasOpen ? openCats.filter((x) => x !== id) : openCats.concat([id]);
+      savePrefs(); renderNav();
+    };
+    if (reduceMotion() || !isPhone()) { finish(); return; }
+    if (wasOpen) {
+      // Close: clip the drawer up into its tile while everything below slides up, then re-render.
+      const d = document.querySelector('#nav-cats .cat-drawer[data-key="drawer-' + id + '"]');
+      if (!d) { finish(); return; }
+      const r = d.getBoundingClientRect();
+      const shift = r.height + (parseFloat(getComputedStyle($("nav-cats")).rowGap) || 10);
+      const movers = belowNodes(r.bottom);
+      const tile = document.querySelector('#nav-cats .cat-stack[data-key="' + id + '"]');
+      if (tile) tile.classList.remove("is-open");
+      animating = true;
+      const dur = 300;
+      d.animate([{ clipPath: "inset(-12px 0 0 0 round 20px)", opacity: 1 }, { clipPath: "inset(-12px 0 100% 0 round 20px)", opacity: 0.5 }], { duration: dur, easing: EASE, fill: "forwards" });
+      movers.forEach((n) => n.animate([{ transform: "translateY(0)" }, { transform: "translateY(" + (-shift) + "px)" }], { duration: dur, easing: EASE, fill: "forwards" }));
+      setTimeout(() => {
+        finish();
+        movers.forEach((n) => n.getAnimations().forEach((a) => a.cancel()));
+        animating = false;
+      }, dur);
+      return;
+    }
+    // Open: re-render with the drawer, then play it in: the drawer unclips downward,
+    // the blocks fade in one after another and everything below slides down.
+    const keyOf = (n) => n.dataset.key || n.id || n.className;
+    const tileBefore = document.querySelector('#nav-cats .cat-stack[data-key="' + id + '"]');
+    const fromY = tileBefore ? tileBefore.getBoundingClientRect().bottom : 0;
+    const before = new Map();
+    belowNodes(fromY).forEach((n) => before.set(keyOf(n), n.getBoundingClientRect().top));
+    finish();
+    const d = document.querySelector('#nav-cats .cat-drawer[data-key="drawer-' + id + '"]');
+    if (!d) return;
+    animating = true;
+    const dur = 380;
+    d.animate([{ clipPath: "inset(-12px 0 100% 0 round 20px)" }, { clipPath: "inset(-12px 0 0 0 round 20px)" }], { duration: dur, easing: EASE });
+    const tileNow = document.querySelector('#nav-cats .cat-stack[data-key="' + id + '"]');
+    if (tileNow) tileNow.animate([{ boxShadow: getComputedStyle(tileNow).getPropertyValue("--stack-shadow") || "none" }, { boxShadow: "none" }], { duration: 300, easing: EASE });
+    d.querySelectorAll(".split-blk").forEach((b, i) => b.animate([{ opacity: 0, transform: "translateY(-10px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 300, delay: 50 + i * 30, easing: EASE, fill: "backwards" }));
+    belowNodes(d.getBoundingClientRect().top).forEach((n) => {
+      const was = before.get(keyOf(n));
+      if (was == null) return;
+      const dy = was - n.getBoundingClientRect().top;
+      if (Math.abs(dy) > 0.5) n.animate([{ transform: "translateY(" + dy + "px)" }, { transform: "translateY(0)" }], { duration: dur, easing: EASE });
+    });
+    setTimeout(() => { animating = false; }, dur);
   }
   function navButton(v, name, icon, color, count, alert, isCat) {
     const b = el("button", "nav-item" + (isCat ? " cat" : "")); b.type = "button";
