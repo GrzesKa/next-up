@@ -659,14 +659,16 @@
     const total = open.filter((t) => inCatTree(t, c.id)).length;
     const go = (v) => { view = v; savePrefs(); render(); if (isPhone()) enterView(); };
     const toggle = () => {
+      const before = navSnapshot();
       openCats = isOpen ? openCats.filter((x) => x !== c.id) : openCats.concat([c.id]);
       justOpened = isOpen ? null : c.id;
       savePrefs(); renderNav(); justOpened = null;
+      navAnimate(before, c.id);
       const again = document.querySelector('.cat-split[data-id="' + c.id + '"] .split-head');
       if (again) again.focus({ preventScroll: true });
     };
     const box = el("div", "cat-split" + (isOpen ? " is-open" : "") + (justOpened === c.id ? " opening" : ""));
-    box.dataset.id = c.id;
+    box.dataset.id = c.id; box.dataset.key = c.id;
     applyPair(box, c.color);
     box.style.setProperty("--blk", inkOn(c.color) === "#FFFFFF" ? "rgba(255,255,255,.16)" : "rgba(255,255,255,.5)");
     const head = el("button", "split-head"); head.type = "button";
@@ -697,8 +699,41 @@
     }
     return box;
   }
+  // Smooth fold/unfold: remember where every tile was, then glide them from there to their new place.
+  function navSnapshot() {
+    const m = new Map();
+    document.querySelectorAll("#nav-cats > *").forEach((n) => { if (n.offsetParent && n.dataset.key) m.set(n.dataset.key, n.getBoundingClientRect()); });
+    const ac = $("btn-add-cat"); if (ac && ac.offsetParent) m.set("addcat", ac.getBoundingClientRect());
+    return m;
+  }
+  function navAnimate(before, morphKey) {
+    if (!Element.prototype.animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const ease = "cubic-bezier(.22,.9,.24,1)", dur = 460;
+    const nodes = Array.from(document.querySelectorAll("#nav-cats > *"));
+    if ($("btn-add-cat")) nodes.push($("btn-add-cat"));
+    nodes.forEach((n) => {
+      if (!n.offsetParent) return;
+      const key = n.id === "btn-add-cat" ? "addcat" : n.dataset.key;
+      const a = key && before.get(key);
+      if (!a) return;
+      const b = n.getBoundingClientRect();
+      const dx = a.left - b.left, dy = a.top - b.top;
+      if (key === morphKey) {
+        n.classList.add("morphing");
+        const anim = n.animate([
+          { transform: "translate(" + dx + "px," + dy + "px)", width: a.width + "px", height: a.height + "px" },
+          { transform: "translate(0,0)", width: b.width + "px", height: b.height + "px" },
+        ], { duration: dur, easing: ease });
+        const done = () => n.classList.remove("morphing");
+        anim.onfinish = done; anim.oncancel = done;
+      } else if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+        n.animate([{ transform: "translate(" + dx + "px," + dy + "px)" }, { transform: "translate(0,0)" }], { duration: dur, easing: ease });
+      }
+    });
+  }
   function navButton(v, name, icon, color, count, alert, isCat) {
     const b = el("button", "nav-item" + (isCat ? " cat" : "")); b.type = "button";
+    if (isCat) b.dataset.key = v.sub || v.id;
     const active = view.type === v.type && (v.type !== "cat" || (view.id === v.id && (view.sub || null) === (v.sub || null)));
     b.setAttribute("aria-current", active ? "true" : "false");
     if (icon) b.insertAdjacentHTML("beforeend", icon);
