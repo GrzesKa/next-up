@@ -175,6 +175,7 @@
       doneAt: r.done_at ? Date.parse(r.done_at) : null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now(),
       repeat: r.repeat || null,
       progress: Math.max(0, Math.min(100, Number(r.progress) || 0)),
+      cleared: r.cleared !== false,
     };
   }
   function taskToRow(t) {
@@ -183,10 +184,11 @@
       priority: Number(t.priority) || 2, due: t.due || null, done: !!t.done, done_at: toIso(t.doneAt), created_at: toIso(t.createdAt),
       repeat: t.repeat || null,
       progress: Math.max(0, Math.min(100, Number(t.progress) || 0)),
+      cleared: t.cleared !== false,
     };
   }
   function patchToRow(p) {
-    const map = { title: "title", notes: "notes", categoryId: "category_id", priority: "priority", due: "due", done: "done", repeat: "repeat", progress: "progress" };
+    const map = { title: "title", notes: "notes", categoryId: "category_id", priority: "priority", due: "due", done: "done", repeat: "repeat", progress: "progress", cleared: "cleared" };
     const out = {};
     Object.keys(p).forEach((k) => {
       if (k === "doneAt") out.done_at = toIso(p.doneAt);
@@ -516,21 +518,41 @@
     return out;
   }
 
-  function toggleDone(t) {
-    const done = !t.done;
-    if (done && t.repeat) {
-      const next = Object.assign({}, t, { id: uid("t"), due: nextDue(t), done: false, doneAt: null, createdAt: Date.now(), progress: 0 });
-      updateTask(t.id, { done: true, doneAt: Date.now(), repeat: null });
-      addTask(next);
-      toast("Done. Next one: " + shortDay(next.due), () => {
-        deleteTasks([next]);
-        updateTask(t.id, { done: false, doneAt: null, repeat: t.repeat });
-      });
+  // A ticked task stays in place, crossed off, until it's tapped a second time (or the day ends).
+  function isPending(t) {
+    if (!t.done || t.cleared !== false || !t.doneAt) return false;
+    const d = new Date(t.doneAt), n = new Date();
+    return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  }
+  const isShown = (t) => !t.done || isPending(t);
+  function onCheck(t) {
+    if (!t.done) return completeTask(t);
+    if (isPending(t)) {
+      updateTask(t.id, { cleared: true });
+      toast("Cleared: " + clip(t.title, 40), () => updateTask(t.id, { cleared: false }));
       return;
     }
-    updateTask(t.id, { done, doneAt: done ? Date.now() : null });
-    if (done) toast("Done: " + clip(t.title, 40), () => updateTask(t.id, { done: false, doneAt: null }));
+    reopenTask(t);
   }
+  function completeTask(t) {
+    const now = Date.now();
+    if (t.repeat) {
+      const next = Object.assign({}, t, { id: uid("t"), due: nextDue(t), done: false, doneAt: null, createdAt: now, progress: 0, cleared: true });
+      updateTask(t.id, { done: true, doneAt: now, cleared: false, repeat: null });
+      addTask(next);
+      toast("Next one: " + shortDay(next.due));
+      return;
+    }
+    updateTask(t.id, { done: true, doneAt: now, cleared: false });
+  }
+  // Un-tick. For a repeating task, also remove the next occurrence that ticking created.
+  function reopenTask(t) {
+    const next = t.doneAt ? tasks.find((x) => !x.done && x.repeat && x.id !== t.id && x.title === t.title &&
+      (x.categoryId || null) === (t.categoryId || null) && Math.abs((x.createdAt || 0) - t.doneAt) < 15000) : null;
+    if (next) deleteTasks([next]);
+    updateTask(t.id, Object.assign({ done: false, doneAt: null, cleared: true }, next ? { repeat: next.repeat } : {}));
+  }
+  function toggleDone(t) { onCheck(t); }
   function deleteTask(t) {
     const copy = Object.assign({}, t);
     deleteTasks([t]);
@@ -665,11 +687,21 @@
     body.appendChild(metaLine(t, { hideCat: view.type === "cat", noteFlag: true }));
     const pb = progressBar(t); if (pb) body.appendChild(pb);
     body.addEventListener("click", () => openTaskEditor(t));
+    const pending = isPending(t);
+    if (pending) li.classList.add("pending");
     const chk = el("button", "check"); chk.type = "button";
-    chk.setAttribute("aria-label", t.done ? "Mark as not done" : "Mark done");
+    chk.setAttribute("aria-label", pending ? "Clear " + t.title + " from the list" : t.done ? "Mark as not done" : "Mark done");
+    chk.title = pending ? "Tap again to clear" : "";
     chk.innerHTML = ICONS.check;
-    chk.addEventListener("click", () => toggleDone(t));
-    li.appendChild(bar); li.appendChild(body); li.appendChild(prioBars(p)); li.appendChild(chk);
+    chk.addEventListener("click", () => onCheck(t));
+    li.appendChild(bar); li.appendChild(body);
+    if (pending) {
+      const un = el("button", "untick", "Undo"); un.type = "button";
+      un.setAttribute("aria-label", "Mark " + t.title + " as not done");
+      un.addEventListener("click", () => reopenTask(t));
+      li.appendChild(un);
+    } else li.appendChild(prioBars(p));
+    li.appendChild(chk);
     return li;
   }
 
@@ -695,7 +727,7 @@
   function renderHomeNext() {
     const box = $("home-next"); box.innerHTML = "";
     if (!loaded) return;
-    const top = sortTasks(tasks.filter((t) => !t.done), "urgency")[0];
+    const top = sortTasks(tasks.filter(isShown), "urgency")[0];
     if (top) box.appendChild(nextCard(top, true));
   }
 
@@ -726,7 +758,8 @@
 
     const scoped = tasks.filter((t) => inView(t, view));
     const open = scoped.filter((t) => !t.done);
-    const done = scoped.filter((t) => t.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    const pendingHere = scoped.filter(isPending);
+    const done = scoped.filter((t) => t.done && !isPending(t)).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     const overdue = open.filter((t) => { const d = daysUntil(t.due); return d !== null && d < 0; }).length;
     const dueToday = open.filter((t) => daysUntil(t.due) === 0).length;
     const parts = [open.length + (open.length === 1 ? " open task" : " open tasks")];
@@ -735,9 +768,10 @@
     if (view.type === "today" && !open.length) parts.splice(0, 1, "Nothing due today");
     $("view-sub").textContent = parts.join(" · ");
 
-    const top = sortTasks(open, "urgency")[0] || null;
+    const shown = open.concat(pendingHere);
+    const top = sortTasks(shown, "urgency")[0] || null;
     renderHero(top, tasks.some((t) => !t.done));
-    const rest = sortTasks(open.filter((t) => t !== top), sortBy);
+    const rest = sortTasks(shown.filter((t) => t !== top), sortBy);
     const labels = { urgency: "most urgent first", due: "soonest due first", priority: "highest priority first", newest: "newest first" };
     $("list-title").textContent = top ? "Then, " + labels[sortBy] : labels[sortBy].charAt(0).toUpperCase() + labels[sortBy].slice(1);
     document.querySelector("#list-mode .toolbar").hidden = !rest.length && !(showDone && done.length) && !done.length;
@@ -746,7 +780,7 @@
     rest.forEach((t) => list.appendChild(taskRow(t)));
     if (!rest.length && top) list.appendChild(el("li", "empty-note", "That's the only open task here."));
     if (showDone) done.forEach((t) => list.appendChild(taskRow(t)));
-    $("btn-clear-done").hidden = !(showDone && done.length);
+    $("btn-clear-done").hidden = !(showDone && (done.length || pendingHere.length));
     $("show-done").checked = showDone;
     $("sort").value = sortBy;
   }
@@ -1184,7 +1218,7 @@
   let dragId = null;
   let lastGhosts = new Map();
   const calMatches = (t) => !calCat || (calCat === "none" ? !catById(t.categoryId) : t.categoryId === calCat);
-  const byDoneThenUrgency = (arr) => sortTasks(arr.filter((t) => !t.done), "urgency").concat(arr.filter((t) => t.done));
+  const byDoneThenUrgency = (arr) => sortTasks(arr.filter(isShown), "urgency").concat(arr.filter((t) => !isShown(t)));
 
   function makeDraggable(node, id) {
     node.draggable = true;
@@ -1223,7 +1257,7 @@
     const y = calMonth.getFullYear(), m = calMonth.getMonth();
     $("cal-month").textContent = calMonth.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 
-    const visible = tasks.filter((t) => calMatches(t) && (showDone || !t.done));
+    const visible = tasks.filter((t) => calMatches(t) && (showDone || isShown(t)));
     const byDay = new Map();
     visible.forEach((t) => { if (t.due && daysUntil(t.due) !== null) { if (!byDay.has(t.due)) byDay.set(t.due, []); byDay.get(t.due).push(t); } });
 
