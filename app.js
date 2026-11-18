@@ -634,8 +634,11 @@
     const nc = $("nav-cats"); nc.innerHTML = "";
     const tops = topCats();
     tops.forEach((c) => {
-      nc.appendChild(navButton({ type: "cat", id: c.id }, c.name, null, c.color, open.filter((t) => inCatTree(t, c.id)).length, false, true));
-      subsOf(c.id).forEach((sc) => {
+      const subs = subsOf(c.id);
+      const pb = navButton({ type: "cat", id: c.id }, c.name, null, c.color, open.filter((t) => inCatTree(t, c.id)).length, false, true);
+      if (subs.length) { pb.classList.add("has-subs"); nc.appendChild(splitTile(c, subs, open)); }
+      nc.appendChild(pb);
+      subs.forEach((sc) => {
         const b = navButton({ type: "cat", id: c.id, sub: sc.id }, sc.name, null, c.color, open.filter((t) => t.categoryId === sc.id).length, false, true);
         b.classList.add("subcat");
         nc.appendChild(b);
@@ -645,6 +648,40 @@
     if (orphan > 0) nc.appendChild(navButton({ type: "cat", id: "none" }, "No category", null, "#DEDAD2", orphan, false, true));
     $("cat-count").textContent = String(tops.length).padStart(2, "0") + (tops.length === 1 ? " LIST" : " LISTS");
     $("brand-date").textContent = new Date().toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase() + " " + String(new Date().getDate()).padStart(2, "0") + "." + String(new Date().getMonth() + 1).padStart(2, "0");
+  }
+  // Phone home: a category with sub-categories becomes one wide tile split into smaller blocks.
+  const SPLIT_MAX = 6;
+  function splitTile(c, subs, open) {
+    const box = el("div", "cat-split");
+    applyPair(box, c.color);
+    box.style.setProperty("--blk", inkOn(c.color) === "#FFFFFF" ? "rgba(255,255,255,.16)" : "rgba(255,255,255,.5)");
+    const go = (v) => { view = v; savePrefs(); render(); if (isPhone()) enterView(); };
+    const head = el("button", "split-head"); head.type = "button";
+    const total = open.filter((t) => inCatTree(t, c.id)).length;
+    head.setAttribute("aria-label", c.name + ", " + total + " open " + (total === 1 ? "task" : "tasks"));
+    head.appendChild(el("span", "split-name", c.name));
+    head.appendChild(el("span", "split-count", String(total)));
+    head.addEventListener("click", () => go({ type: "cat", id: c.id }));
+    box.appendChild(head);
+    const grid = el("div", "split-grid");
+    const shown = subs.length > SPLIT_MAX ? subs.slice(0, SPLIT_MAX - 1) : subs;
+    shown.forEach((sc) => {
+      const n = open.filter((t) => t.categoryId === sc.id).length;
+      const b = el("button", "split-blk"); b.type = "button";
+      b.setAttribute("aria-label", sc.name + ", " + n + " open " + (n === 1 ? "task" : "tasks"));
+      b.appendChild(el("span", "blk-name", sc.name));
+      b.appendChild(el("span", "blk-count" + (n ? "" : " zero"), String(n)));
+      b.addEventListener("click", () => go({ type: "cat", id: c.id, sub: sc.id }));
+      grid.appendChild(b);
+    });
+    if (subs.length > SPLIT_MAX) {
+      const more = el("button", "split-blk more"); more.type = "button";
+      more.appendChild(el("span", "blk-name", "+" + (subs.length - shown.length) + " more"));
+      more.addEventListener("click", () => go({ type: "cat", id: c.id }));
+      grid.appendChild(more);
+    }
+    box.appendChild(grid);
+    return box;
   }
   function navButton(v, name, icon, color, count, alert, isCat) {
     const b = el("button", "nav-item" + (isCat ? " cat" : "")); b.type = "button";
