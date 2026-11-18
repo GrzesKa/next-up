@@ -174,6 +174,7 @@
       priority: Number(r.priority) || 2, due: r.due || null, done: !!r.done,
       doneAt: r.done_at ? Date.parse(r.done_at) : null, createdAt: r.created_at ? Date.parse(r.created_at) : Date.now(),
       repeat: r.repeat || null,
+      progress: Math.max(0, Math.min(100, Number(r.progress) || 0)),
     };
   }
   function taskToRow(t) {
@@ -181,10 +182,11 @@
       id: t.id, user_id: userId, title: t.title, notes: t.notes || "", category_id: t.categoryId || null,
       priority: Number(t.priority) || 2, due: t.due || null, done: !!t.done, done_at: toIso(t.doneAt), created_at: toIso(t.createdAt),
       repeat: t.repeat || null,
+      progress: Math.max(0, Math.min(100, Number(t.progress) || 0)),
     };
   }
   function patchToRow(p) {
-    const map = { title: "title", notes: "notes", categoryId: "category_id", priority: "priority", due: "due", done: "done", repeat: "repeat" };
+    const map = { title: "title", notes: "notes", categoryId: "category_id", priority: "priority", due: "due", done: "done", repeat: "repeat", progress: "progress" };
     const out = {};
     Object.keys(p).forEach((k) => {
       if (k === "doneAt") out.done_at = toIso(p.doneAt);
@@ -207,10 +209,11 @@
     $("status-text").textContent = text;
   }
   let toastTimer = null, toastUndo = null;
-  function toast(text, undo) {
+  function toast(text, undo, actionLabel) {
     $("toast-text").textContent = text;
     toastUndo = undo || null;
     $("toast-undo").hidden = !undo;
+    $("toast-undo").textContent = actionLabel || "Undo";
     $("toast").classList.add("show");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { $("toast").classList.remove("show"); toastUndo = null; }, undo ? 6000 : 4500);
@@ -404,7 +407,7 @@
 
   // ---------- task & category actions ----------
   function addTask(data) {
-    const t = Object.assign({ id: uid("t"), notes: "", categoryId: null, priority: 2, due: null, done: false, doneAt: null, createdAt: Date.now(), repeat: null }, data);
+    const t = Object.assign({ id: uid("t"), notes: "", categoryId: null, priority: 2, due: null, done: false, doneAt: null, createdAt: Date.now(), repeat: null, progress: 0 }, data);
     tasks = tasks.concat([t]); render();
     enqueue({ kind: "upsert", table: "tasks", rows: [taskToRow(t)] });
   }
@@ -516,7 +519,7 @@
   function toggleDone(t) {
     const done = !t.done;
     if (done && t.repeat) {
-      const next = Object.assign({}, t, { id: uid("t"), due: nextDue(t), done: false, doneAt: null, createdAt: Date.now() });
+      const next = Object.assign({}, t, { id: uid("t"), due: nextDue(t), done: false, doneAt: null, createdAt: Date.now(), progress: 0 });
       updateTask(t.id, { done: true, doneAt: Date.now(), repeat: null });
       addTask(next);
       toast("Done. Next one: " + shortDay(next.due), () => {
@@ -618,6 +621,20 @@
     if (t.notes && opts && opts.noteFlag) { m.appendChild(el("span", "sep", "·")); m.appendChild(el("span", null, "NOTES")); }
     return m;
   }
+  function progressBar(t) {
+    const pr = Number(t.progress) || 0;
+    if (!pr || t.done) return null;
+    const wrap = el("div", "progress");
+    wrap.setAttribute("role", "progressbar");
+    wrap.setAttribute("aria-valuemin", "0"); wrap.setAttribute("aria-valuemax", "100"); wrap.setAttribute("aria-valuenow", String(pr));
+    wrap.setAttribute("aria-label", "Progress");
+    const track = el("span", "progress-track");
+    const fill = el("span", "progress-fill"); fill.style.width = pr + "%";
+    track.appendChild(fill);
+    wrap.appendChild(track);
+    wrap.appendChild(el("span", "progress-pct", pr + "%"));
+    return wrap;
+  }
   function prioBars(p) {
     const s = el("span", "bars");
     s.setAttribute("role", "img"); s.setAttribute("aria-label", PRI[p] + " priority");
@@ -645,6 +662,7 @@
     body.setAttribute("aria-label", "Edit " + t.title);
     body.appendChild(el("div", "t-title", t.title));
     body.appendChild(metaLine(t, { hideCat: view.type === "cat", noteFlag: true }));
+    const pb = progressBar(t); if (pb) body.appendChild(pb);
     body.addEventListener("click", () => openTaskEditor(t));
     const chk = el("button", "check"); chk.type = "button";
     chk.setAttribute("aria-label", t.done ? "Mark as not done" : "Mark done");
@@ -664,6 +682,7 @@
     const c = catById(top.categoryId);
     const dl = dateLabel(top);
     body.appendChild(el("div", "meta", [dl.text, c ? c.name.toUpperCase() : null, PRI[Number(top.priority) || 2].toUpperCase(), top.repeat ? "↻ " + repeatLabel(top.repeat) : null].filter(Boolean).join("  ·  ")));
+    const pb = progressBar(top); if (pb) body.appendChild(pb);
     body.addEventListener("click", () => openTaskEditor(top));
     const chk = el("button", "check"); chk.type = "button";
     chk.setAttribute("aria-label", "Mark done"); chk.innerHTML = ICONS.check;
@@ -1373,6 +1392,7 @@
     $("te-pri-" + (Number(t.priority) || 2)).checked = true;
     $("te-due").value = t.due || "";
     $("te-notes").value = t.notes || "";
+    setProgressUi(Number(t.progress) || 0);
     const r = parseRepeat(t.repeat);
     $("te-repeat-n").value = String(r ? Math.min(r.n, 12) : 1);
     $("te-repeat-unit").value = r ? r.unit : "";
@@ -1422,6 +1442,12 @@
   });
   $("te-repeat-n").addEventListener("change", syncRepeatUi);
   document.querySelectorAll("#te-days input").forEach((inp) => inp.addEventListener("change", syncRepeatUi));
+  function setProgressUi(v) {
+    $("te-progress").value = String(v);
+    $("te-progress-out").textContent = v + "%";
+    $("te-progress").style.setProperty("--pct", v + "%");
+  }
+  $("te-progress").addEventListener("input", () => setProgressUi(Number($("te-progress").value) || 0));
   document.querySelectorAll(".quick-dates button").forEach((b) => b.addEventListener("click", () => {
     $("te-due").value = b.dataset.off === "clear" ? "" : dateStr(Number(b.dataset.off));
   }));
@@ -1437,6 +1463,7 @@
       due: $("te-due").value || null,
       notes: $("te-notes").value.trim(),
       repeat: readRepeat(),
+      progress: Number($("te-progress").value) || 0,
     };
     if (patch.repeat && !patch.due) patch.due = dateStr(0);
     if (repeatDays(patch.repeat)) patch.due = alignToDays(patch.due, patch.repeat);
@@ -1446,6 +1473,10 @@
     } else {
       const changed = Object.keys(patch).some((k) => (editing[k] == null ? null : editing[k]) !== patch[k]);
       if (changed) updateTask(editing.id, patch);
+      if (patch.progress === 100 && (Number(editing.progress) || 0) < 100 && !editing.done) {
+        const t = Object.assign({}, editing, patch);
+        setTimeout(() => toast("100% – " + clip(t.title, 28), () => toggleDone(tasks.find((x) => x.id === t.id) || t), "Mark done"), 50);
+      }
     }
     closeOverlay("task-overlay"); editing = null; creating = false;
   });

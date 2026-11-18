@@ -106,3 +106,5 @@ create policy "Own books" on public.books for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 alter table public.books add column if not exists notes text not null default '' check (char_length(notes) <= 5000);
+
+alter table public.tasks add column if not exists progress smallint not null default 0 check (progress between 0 and 100);
