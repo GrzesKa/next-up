@@ -79,9 +79,10 @@
   let shelf = prefs.shelf || "to_read";
   let wishTab = prefs.wishTab === "bought" ? "bought" : "want";
   let wishTag = prefs.wishTag || "";
+  let openCats = Array.isArray(prefs.openCats) ? prefs.openCats : [];
 
   function loadPrefs() { try { return JSON.parse(localStorage.getItem("nextup.prefs") || "{}"); } catch (e) { return {}; } }
-  function savePrefs() { try { localStorage.setItem("nextup.prefs", JSON.stringify({ view, sortBy, showDone, calCat, shelf, wishTab, wishTag })); } catch (e) {} }
+  function savePrefs() { try { localStorage.setItem("nextup.prefs", JSON.stringify({ view, sortBy, showDone, calCat, shelf, wishTab, wishTag, openCats })); } catch (e) {} }
 
   const $ = (id) => document.getElementById(id);
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -649,38 +650,51 @@
     $("cat-count").textContent = String(tops.length).padStart(2, "0") + (tops.length === 1 ? " LIST" : " LISTS");
     $("brand-date").textContent = new Date().toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase() + " " + String(new Date().getDate()).padStart(2, "0") + "." + String(new Date().getMonth() + 1).padStart(2, "0");
   }
-  // Phone home: a category with sub-categories becomes one wide tile split into smaller blocks.
+  // Phone home: a category with sub-categories looks like a stack of tiles.
+  // Tap it and it unfolds into one wide tile split into smaller blocks; tap the top bar to fold it again.
   const SPLIT_MAX = 6;
+  let justOpened = null;
   function splitTile(c, subs, open) {
-    const box = el("div", "cat-split");
+    const isOpen = openCats.indexOf(c.id) !== -1;
+    const total = open.filter((t) => inCatTree(t, c.id)).length;
+    const go = (v) => { view = v; savePrefs(); render(); if (isPhone()) enterView(); };
+    const toggle = () => {
+      openCats = isOpen ? openCats.filter((x) => x !== c.id) : openCats.concat([c.id]);
+      justOpened = isOpen ? null : c.id;
+      savePrefs(); renderNav(); justOpened = null;
+      const again = document.querySelector('.cat-split[data-id="' + c.id + '"] .split-head');
+      if (again) again.focus({ preventScroll: true });
+    };
+    const box = el("div", "cat-split" + (isOpen ? " is-open" : "") + (justOpened === c.id ? " opening" : ""));
+    box.dataset.id = c.id;
     applyPair(box, c.color);
     box.style.setProperty("--blk", inkOn(c.color) === "#FFFFFF" ? "rgba(255,255,255,.16)" : "rgba(255,255,255,.5)");
-    const go = (v) => { view = v; savePrefs(); render(); if (isPhone()) enterView(); };
     const head = el("button", "split-head"); head.type = "button";
-    const total = open.filter((t) => inCatTree(t, c.id)).length;
-    head.setAttribute("aria-label", c.name + ", " + total + " open " + (total === 1 ? "task" : "tasks"));
+    head.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    head.setAttribute("aria-label", c.name + ", " + total + " open " + (total === 1 ? "task" : "tasks") + ", " + subs.length + " sub-categories. " + (isOpen ? "Tap to fold." : "Tap to show them."));
+    if (!isOpen) head.appendChild(el("span", "split-inside", subs.length + " INSIDE"));
     head.appendChild(el("span", "split-name", c.name));
     head.appendChild(el("span", "split-count", String(total)));
-    head.addEventListener("click", () => go({ type: "cat", id: c.id }));
+    if (isOpen) { const chev = el("span", "split-chev"); chev.setAttribute("aria-hidden", "true"); head.appendChild(chev); }
+    head.addEventListener("click", toggle);
     box.appendChild(head);
-    const grid = el("div", "split-grid");
-    const shown = subs.length > SPLIT_MAX ? subs.slice(0, SPLIT_MAX - 1) : subs;
-    shown.forEach((sc) => {
-      const n = open.filter((t) => t.categoryId === sc.id).length;
-      const b = el("button", "split-blk"); b.type = "button";
-      b.setAttribute("aria-label", sc.name + ", " + n + " open " + (n === 1 ? "task" : "tasks"));
-      b.appendChild(el("span", "blk-name", sc.name));
-      b.appendChild(el("span", "blk-count" + (n ? "" : " zero"), String(n)));
-      b.addEventListener("click", () => go({ type: "cat", id: c.id, sub: sc.id }));
-      grid.appendChild(b);
-    });
-    if (subs.length > SPLIT_MAX) {
-      const more = el("button", "split-blk more"); more.type = "button";
-      more.appendChild(el("span", "blk-name", "+" + (subs.length - shown.length) + " more"));
-      more.addEventListener("click", () => go({ type: "cat", id: c.id }));
-      grid.appendChild(more);
+    if (isOpen) {
+      const grid = el("div", "split-grid");
+      const block = (label, n, v, cls) => {
+        const b = el("button", "split-blk" + (cls ? " " + cls : "")); b.type = "button";
+        b.setAttribute("aria-label", label + (n != null ? ", " + n + " open " + (n === 1 ? "task" : "tasks") : ""));
+        b.appendChild(el("span", "blk-name", label));
+        if (n != null) b.appendChild(el("span", "blk-count" + (n ? "" : " zero"), String(n)));
+        b.addEventListener("click", () => go(v));
+        grid.appendChild(b);
+      };
+      block("All", total, { type: "cat", id: c.id }, "all");
+      const room = SPLIT_MAX - 1;
+      const shown = subs.length > room ? subs.slice(0, room - 1) : subs;
+      shown.forEach((sc) => block(sc.name, open.filter((t) => t.categoryId === sc.id).length, { type: "cat", id: c.id, sub: sc.id }));
+      if (subs.length > shown.length) block("+" + (subs.length - shown.length) + " more", null, { type: "cat", id: c.id }, "more");
+      box.appendChild(grid);
     }
-    box.appendChild(grid);
     return box;
   }
   function navButton(v, name, icon, color, count, alert, isCat) {
