@@ -1396,7 +1396,19 @@
     setDayPicks(r && r.unit === "week" ? (r.days || (t.due ? [parseYmd(t.due).getDay()] : [])) : []);
     syncRepeatUi();
     openOverlay("task-overlay", "te-title");
+    fitNotes();
   }
+  // Notes start as a single line and grow with what's typed in them.
+  function fitNotes() {
+    const ta = $("te-notes");
+    ta.style.height = "";
+    if (!ta.offsetParent) return;
+    const cap = Math.round(window.innerHeight * 0.4);
+    const h = Math.min(ta.scrollHeight + 2, cap);
+    if (h > ta.offsetHeight) ta.style.height = h + "px";
+    ta.style.overflowY = ta.scrollHeight + 2 > cap ? "auto" : "hidden";
+  }
+  $("te-notes").addEventListener("input", fitNotes);
   function openNewTask() {
     if (!userId) return;
     const onHome = isPhone() && !document.body.classList.contains("in-view");

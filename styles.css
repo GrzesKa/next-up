@@ -469,3 +469,6 @@ input[type="date"].input::-webkit-calendar-picker-indicator { margin-left: auto;
   .sheet .seg label { font-size: 13px; gap: 4px; }
   .sheet .seg .trio i { width: 5px; height: 5px; }
 }
+
+/* Task notes: one line to start, grows as you type (see fitNotes) */
+#te-notes { min-height: 46px; height: 46px; resize: none; overflow-y: hidden; line-height: 1.4; }
