@@ -443,3 +443,21 @@ ul.tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-directio
 .next-tag { background: var(--forest); color: var(--lime); font-weight: 600; border-radius: 6px; padding: 2px 6px; }
 .next-why { color: var(--forest); font-weight: 600; }
 .task.is-next .check { border-color: var(--forest); }
+
+/* ---------- iPhone: keep forms inside the screen ---------- */
+/* Safari gives date inputs a fixed minimum width that ignores width:100%, which pushed the
+   task form sideways. Reset it, and stop the sheet itself from scrolling horizontally. */
+.overlay { overflow-x: hidden; overscroll-behavior: contain; }
+.sheet { overflow-x: hidden; overscroll-behavior: contain; touch-action: pan-y; max-width: 100%; }
+.sheet .form-field, .sheet .row > *, .sheet .row { min-width: 0; }
+.input { min-width: 0; max-width: 100%; }
+input[type="date"].input {
+  -webkit-appearance: none; appearance: none;
+  display: block; width: 100%; min-width: 0; max-width: 100%;
+  min-height: 46px; line-height: 1.25; text-align: left;
+  background-color: var(--bg);
+}
+input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin: 0; }
+input[type="date"].input::-webkit-calendar-picker-indicator { margin-left: auto; }
+.seg { max-width: 100%; flex-wrap: wrap; }
+.repeat-row select.input { max-width: 100%; }
