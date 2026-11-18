@@ -2,7 +2,7 @@
    App files: try the network first (so updates show up straight away), fall back to the
    saved copy when there is no connection. Libraries and fonts: saved copy first.
    Supabase (your data and sign-in) is never cached here; the app keeps its own copy of your tasks. */
-const VERSION = "nextup-v7";
+const VERSION = "nextup-v8";
 const CORE = [
   "/",
   "/index.html",

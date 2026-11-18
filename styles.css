@@ -585,3 +585,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { margin-left: auto;
   .sub-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-left: -2px; margin-right: -2px; padding: 0 2px; }
   .sub-chips::-webkit-scrollbar { display: none; }
 }
+
+/* Wider sheets on laptop; category and priority each get a full row so nothing is cut off */
+.sheet { width: min(580px, 100%); }
+#task-form .row { flex-direction: column; align-items: stretch; gap: 16px; }
+#task-form .row > .form-field { width: 100%; flex: none; }
