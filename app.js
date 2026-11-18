@@ -636,9 +636,10 @@
     return wrap;
   }
   function prioBars(p) {
-    const s = el("span", "bars");
+    const s = el("span", "trio");
     s.setAttribute("role", "img"); s.setAttribute("aria-label", PRI[p] + " priority");
-    for (let i = 1; i <= 3; i++) s.appendChild(el("span", i <= p ? "on" : null));
+    s.title = PRI[p] + " priority";
+    for (let i = 1; i <= 3; i++) s.appendChild(el("i", i <= p ? "on" : null));
     return s;
   }
   function dueShort(t) {
