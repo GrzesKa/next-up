@@ -769,8 +769,8 @@
       if (tile) tile.classList.remove("is-open");
       animating = true;
       const blocks = aimBlocks(d);
-      blocks.slice().reverse().forEach((bk, i) => bk.animate([{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(.35)" }], { duration: 240, delay: i * 25, easing: EASE_IN, fill: "forwards" }));
-      const lag = 90, dur = 460;
+      blocks.slice().reverse().forEach((bk, i) => bk.animate([{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(.35)" }], { duration: 210, delay: i * 22, easing: EASE_IN, fill: "forwards" }));
+      const lag = 78, dur = 400;
       d.animate([{ clipPath: "inset(-12px 0 0 0 round 20px)" }, { clipPath: "inset(-12px 0 100% 0 round 20px)" }], { duration: dur, delay: lag, easing: "cubic-bezier(.55,0,.25,1)", fill: "forwards" });
       movers.forEach((n) => n.animate([{ transform: "translateY(0)" }, { transform: "translateY(" + (-shift) + "px)" }], { duration: dur, delay: lag, easing: "cubic-bezier(.55,0,.25,1)", fill: "forwards" }));
       setTimeout(() => {
@@ -791,20 +791,20 @@
     const d = document.querySelector('#nav-cats .cat-drawer[data-key="drawer-' + id + '"]');
     if (!d) return;
     animating = true;
-    const dur = 620;
+    const dur = 540;
     d.animate([{ clipPath: "inset(-12px 0 100% 0 round 20px)" }, { clipPath: "inset(-12px 0 0 0 round 20px)" }], { duration: dur, easing: SPRING_SOFT });
     const tileNow = document.querySelector('#nav-cats .cat-stack[data-key="' + id + '"]');
-    if (tileNow) tileNow.animate([{ boxShadow: getComputedStyle(tileNow).getPropertyValue("--stack-shadow") || "none" }, { boxShadow: "none" }], { duration: 420, easing: EASE });
+    if (tileNow) tileNow.animate([{ boxShadow: getComputedStyle(tileNow).getPropertyValue("--stack-shadow") || "none" }, { boxShadow: "none" }], { duration: 365, easing: EASE });
     aimBlocks(d).forEach((bk, i) => bk.animate(
       [{ opacity: 0, transform: "scale(.4)" }, { opacity: 1, offset: 0.3 }, { opacity: 1, transform: "scale(1)" }],
-      { duration: 640, delay: 80 + i * 55, easing: SPRING_POP, fill: "backwards" }));
+      { duration: 560, delay: 70 + i * 48, easing: SPRING_POP, fill: "backwards" }));
     belowNodes(d.getBoundingClientRect().top).forEach((n) => {
       const was = before.get(keyOf(n));
       if (was == null) return;
       const dy = was - n.getBoundingClientRect().top;
       if (Math.abs(dy) > 0.5) n.animate([{ transform: "translateY(" + dy + "px)" }, { transform: "translateY(0)" }], { duration: dur, easing: SPRING_SOFT });
     });
-    setTimeout(() => { animating = false; }, 450);
+    setTimeout(() => { animating = false; }, 390);
   }
   function navButton(v, name, icon, color, count, alert, isCat) {
     const b = el("button", "nav-item" + (isCat ? " cat" : "")); b.type = "button";

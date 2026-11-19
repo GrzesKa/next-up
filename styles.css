@@ -599,11 +599,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { margin-left: auto;
   .cat-stack { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto 1fr; align-items: end; height: 78px; margin-bottom: 14px; padding: 12px 12px 12px 14px; border: 0; border-radius: var(--r-tile); background: var(--c); color: var(--ct); text-align: left; position: relative;
     --stack-shadow: 0 7px 0 -3px var(--c2), 0 14px 0 -6px var(--c), 0 14px 0 -5px rgba(21,21,20,.12);
     box-shadow: var(--stack-shadow);
-    transition: box-shadow .4s cubic-bezier(.32,.72,0,1), transform .15s ease; }
+    transition: box-shadow .35s cubic-bezier(.32,.72,0,1), transform .15s ease; }
   .cat-stack:active { transform: scale(.97); }
   .cat-stack.is-open { box-shadow: 0 0 0 -3px var(--c2), 0 0 0 -6px var(--c), 0 0 0 -5px transparent; }
   .stack-inside { grid-column: 1; grid-row: 1; align-self: start; display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; opacity: .75; }
-  .stack-chev { width: 6px; height: 6px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .45s cubic-bezier(.32,.72,0,1); }
+  .stack-chev { width: 6px; height: 6px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .39s cubic-bezier(.32,.72,0,1); }
   .cat-stack.is-open .stack-chev { transform: translateY(1px) rotate(225deg); }
   .stack-name { grid-column: 1; grid-row: 2; font-size: 15px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; overflow-wrap: anywhere; }
   .stack-count { grid-column: 2; grid-row: 1 / span 2; align-self: start; width: 38px; height: 38px; border-radius: 50%; background: var(--c2); color: var(--c2t); display: grid; place-items: center; font-size: 17px; font-weight: 800; }
