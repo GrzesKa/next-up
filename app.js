@@ -632,6 +632,12 @@
       if (it.v.type === "wishlist") decorateWishTile(b);
       nv.appendChild(b);
     });
+    renderCatTiles(open);
+    $("brand-date").textContent = new Date().toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase() + " " + String(new Date().getDate()).padStart(2, "0") + "." + String(new Date().getMonth() + 1).padStart(2, "0");
+  }
+  // Only the categories part of the home screen (opening a drawer redraws just this, so nothing else flickers).
+  function renderCatTiles(open) {
+    open = open || tasks.filter((t) => !t.done);
     const nc = $("nav-cats"); nc.innerHTML = "";
     const tops = topCats();
     tops.forEach((c) => {
@@ -653,7 +659,6 @@
     if (orphan > 0) nc.appendChild(navButton({ type: "cat", id: "none" }, "No category", null, "#DEDAD2", orphan, false, true));
     $("cat-count").textContent = String(tops.length).padStart(2, "0") + (tops.length === 1 ? " LIST" : " LISTS");
     aimNotches();
-    $("brand-date").textContent = new Date().toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase() + " " + String(new Date().getDate()).padStart(2, "0") + "." + String(new Date().getMonth() + 1).padStart(2, "0");
   }
   // Phone home: a category with sub-categories looks like a stack of tiles. Tapping it opens a drawer
   // straight underneath with one block per sub-category; tapping it again closes the drawer.
@@ -722,7 +727,7 @@
     const wasOpen = openCats.indexOf(id) !== -1;
     const finish = () => {
       openCats = wasOpen ? openCats.filter((x) => x !== id) : openCats.concat([id]);
-      savePrefs(); renderNav();
+      savePrefs(); renderCatTiles();
     };
     if (reduceMotion() || !isPhone()) { finish(); return; }
     if (wasOpen) {
@@ -735,7 +740,7 @@
       const tile = document.querySelector('#nav-cats .cat-stack[data-key="' + id + '"]');
       if (tile) tile.classList.remove("is-open");
       animating = true;
-      const dur = 300;
+      const dur = 400;
       d.animate([{ clipPath: "inset(-12px 0 0 0 round 20px)", opacity: 1 }, { clipPath: "inset(-12px 0 100% 0 round 20px)", opacity: 0.5 }], { duration: dur, easing: EASE, fill: "forwards" });
       movers.forEach((n) => n.animate([{ transform: "translateY(0)" }, { transform: "translateY(" + (-shift) + "px)" }], { duration: dur, easing: EASE, fill: "forwards" }));
       setTimeout(() => {
@@ -756,11 +761,11 @@
     const d = document.querySelector('#nav-cats .cat-drawer[data-key="drawer-' + id + '"]');
     if (!d) return;
     animating = true;
-    const dur = 380;
+    const dur = 500;
     d.animate([{ clipPath: "inset(-12px 0 100% 0 round 20px)" }, { clipPath: "inset(-12px 0 0 0 round 20px)" }], { duration: dur, easing: EASE });
     const tileNow = document.querySelector('#nav-cats .cat-stack[data-key="' + id + '"]');
-    if (tileNow) tileNow.animate([{ boxShadow: getComputedStyle(tileNow).getPropertyValue("--stack-shadow") || "none" }, { boxShadow: "none" }], { duration: 300, easing: EASE });
-    d.querySelectorAll(".split-blk").forEach((b, i) => b.animate([{ opacity: 0, transform: "translateY(-10px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 300, delay: 50 + i * 30, easing: EASE, fill: "backwards" }));
+    if (tileNow) tileNow.animate([{ boxShadow: getComputedStyle(tileNow).getPropertyValue("--stack-shadow") || "none" }, { boxShadow: "none" }], { duration: 400, easing: EASE });
+    d.querySelectorAll(".split-blk").forEach((b, i) => b.animate([{ opacity: 0, transform: "translateY(-10px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 420, delay: 70 + i * 45, easing: EASE, fill: "backwards" }));
     belowNodes(d.getBoundingClientRect().top).forEach((n) => {
       const was = before.get(keyOf(n));
       if (was == null) return;
@@ -1474,6 +1479,20 @@
     } else fallback();
     return box;
   }
+  // Reuse the same small photo elements on every redraw so already-loaded pictures never blink.
+  const thumbCache = new Map();
+  function cachedThumb(w) {
+    const key = w.id + "|" + (w.imageUrl || "") + "|" + w.name;
+    let node = thumbCache.get(key);
+    if (!node) {
+      node = wishPhoto(w, "tiny");
+      const img = node.querySelector("img");
+      if (img) { img.loading = "eager"; img.decoding = "sync"; }
+      thumbCache.set(key, node);
+      if (thumbCache.size > 40) thumbCache.delete(thumbCache.keys().next().value);
+    }
+    return node;
+  }
   // Phone home: the Wishlist tile spans the row and shows a few photos and the total.
   function decorateWishTile(b) {
     b.classList.add("wish-tile");
@@ -1482,7 +1501,7 @@
     if (tot.length) b.appendChild(el("span", "wish-total", tot.slice(0, 2).join(" + ")));
     if (want.length) {
       const th = el("span", "wish-thumbs"); th.setAttribute("aria-hidden", "true");
-      want.slice(0, 4).forEach((w) => th.appendChild(wishPhoto(w, "tiny")));
+      want.slice(0, 4).forEach((w) => th.appendChild(cachedThumb(w)));
       b.appendChild(th);
     }
   }
