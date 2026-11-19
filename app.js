@@ -722,6 +722,34 @@
     const list = Array.from(document.querySelectorAll("#nav-cats > *")).concat(Array.from(document.querySelectorAll("#btn-add-cat, .rail .status, .rail .account")));
     return list.filter((n) => n.offsetParent && !n.classList.contains("cat-drawer") && n.getBoundingClientRect().top >= y - 1);
   }
+  // Spring-like timing: quick start, a small overshoot, then it settles (not a straight, even movement).
+  function springEase(zeta) {
+    const w = 4.6 / zeta, wd = w * Math.sqrt(1 - zeta * zeta), pts = [];
+    for (let i = 0; i <= 48; i++) {
+      const t = i / 48;
+      let x = 1 - Math.exp(-zeta * w * t) * (Math.cos(wd * t) + (zeta * w / wd) * Math.sin(wd * t));
+      if (i === 48) x = 1;
+      pts.push(+x.toFixed(4));
+    }
+    return "linear(" + pts.join(", ") + ")";
+  }
+  const HAS_LINEAR = !!(window.CSS && CSS.supports && CSS.supports("transition-timing-function", "linear(0, 1)"));
+  const SPRING_SOFT = HAS_LINEAR ? springEase(0.82) : EASE;
+  const SPRING_POP = HAS_LINEAR ? springEase(0.68) : "cubic-bezier(.34,1.3,.64,1)";
+  const EASE_IN = "cubic-bezier(.5,0,.75,0)";
+  // Make every block in a drawer grow out of (or shrink back into) the notch under its tile.
+  function aimBlocks(d) {
+    const dr = d.getBoundingClientRect();
+    const nx = dr.left + (parseFloat(d.style.getPropertyValue("--notch")) || dr.width / 4);
+    return Array.from(d.querySelectorAll(".split-blk")).map((b) => {
+      const br = b.getBoundingClientRect();
+      // Halfway between the block's own centre and the notch: it still grows out of the tile, but stays inside the drawer.
+      const ox = br.width / 2 + (nx - (br.left + br.width / 2)) * 0.45;
+      const oy = (dr.top - br.top) * 0.45;
+      b.style.transformOrigin = Math.round(ox) + "px " + Math.round(oy) + "px";
+      return b;
+    });
+  }
   function toggleDrawer(id) {
     if (animating) return;
     const wasOpen = openCats.indexOf(id) !== -1;
@@ -731,7 +759,7 @@
     };
     if (reduceMotion() || !isPhone()) { finish(); return; }
     if (wasOpen) {
-      // Close: clip the drawer up into its tile while everything below slides up, then re-render.
+      // Close: blocks shrink back into the notch, then the drawer folds up while everything below follows.
       const d = document.querySelector('#nav-cats .cat-drawer[data-key="drawer-' + id + '"]');
       if (!d) { finish(); return; }
       const r = d.getBoundingClientRect();
@@ -740,18 +768,20 @@
       const tile = document.querySelector('#nav-cats .cat-stack[data-key="' + id + '"]');
       if (tile) tile.classList.remove("is-open");
       animating = true;
-      const dur = 400;
-      d.animate([{ clipPath: "inset(-12px 0 0 0 round 20px)", opacity: 1 }, { clipPath: "inset(-12px 0 100% 0 round 20px)", opacity: 0.5 }], { duration: dur, easing: EASE, fill: "forwards" });
-      movers.forEach((n) => n.animate([{ transform: "translateY(0)" }, { transform: "translateY(" + (-shift) + "px)" }], { duration: dur, easing: EASE, fill: "forwards" }));
+      const blocks = aimBlocks(d);
+      blocks.slice().reverse().forEach((bk, i) => bk.animate([{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(.35)" }], { duration: 240, delay: i * 25, easing: EASE_IN, fill: "forwards" }));
+      const lag = 90, dur = 460;
+      d.animate([{ clipPath: "inset(-12px 0 0 0 round 20px)" }, { clipPath: "inset(-12px 0 100% 0 round 20px)" }], { duration: dur, delay: lag, easing: "cubic-bezier(.55,0,.25,1)", fill: "forwards" });
+      movers.forEach((n) => n.animate([{ transform: "translateY(0)" }, { transform: "translateY(" + (-shift) + "px)" }], { duration: dur, delay: lag, easing: "cubic-bezier(.55,0,.25,1)", fill: "forwards" }));
       setTimeout(() => {
         finish();
-        movers.forEach((n) => n.getAnimations().forEach((a) => a.cancel()));
+        movers.forEach((n) => n.getAnimations().forEach((an) => an.cancel()));
         animating = false;
-      }, dur);
+      }, lag + dur);
       return;
     }
-    // Open: re-render with the drawer, then play it in: the drawer unclips downward,
-    // the blocks fade in one after another and everything below slides down.
+    // Open: the drawer unfolds downward with a soft spring, everything below rides along,
+    // and the blocks grow out of the notch one after another with a little bounce.
     const keyOf = (n) => n.dataset.key || n.id || n.className;
     const tileBefore = document.querySelector('#nav-cats .cat-stack[data-key="' + id + '"]');
     const fromY = tileBefore ? tileBefore.getBoundingClientRect().bottom : 0;
@@ -761,18 +791,20 @@
     const d = document.querySelector('#nav-cats .cat-drawer[data-key="drawer-' + id + '"]');
     if (!d) return;
     animating = true;
-    const dur = 500;
-    d.animate([{ clipPath: "inset(-12px 0 100% 0 round 20px)" }, { clipPath: "inset(-12px 0 0 0 round 20px)" }], { duration: dur, easing: EASE });
+    const dur = 620;
+    d.animate([{ clipPath: "inset(-12px 0 100% 0 round 20px)" }, { clipPath: "inset(-12px 0 0 0 round 20px)" }], { duration: dur, easing: SPRING_SOFT });
     const tileNow = document.querySelector('#nav-cats .cat-stack[data-key="' + id + '"]');
-    if (tileNow) tileNow.animate([{ boxShadow: getComputedStyle(tileNow).getPropertyValue("--stack-shadow") || "none" }, { boxShadow: "none" }], { duration: 400, easing: EASE });
-    d.querySelectorAll(".split-blk").forEach((b, i) => b.animate([{ opacity: 0, transform: "translateY(-10px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 420, delay: 70 + i * 45, easing: EASE, fill: "backwards" }));
+    if (tileNow) tileNow.animate([{ boxShadow: getComputedStyle(tileNow).getPropertyValue("--stack-shadow") || "none" }, { boxShadow: "none" }], { duration: 420, easing: EASE });
+    aimBlocks(d).forEach((bk, i) => bk.animate(
+      [{ opacity: 0, transform: "scale(.4)" }, { opacity: 1, offset: 0.3 }, { opacity: 1, transform: "scale(1)" }],
+      { duration: 640, delay: 80 + i * 55, easing: SPRING_POP, fill: "backwards" }));
     belowNodes(d.getBoundingClientRect().top).forEach((n) => {
       const was = before.get(keyOf(n));
       if (was == null) return;
       const dy = was - n.getBoundingClientRect().top;
-      if (Math.abs(dy) > 0.5) n.animate([{ transform: "translateY(" + dy + "px)" }, { transform: "translateY(0)" }], { duration: dur, easing: EASE });
+      if (Math.abs(dy) > 0.5) n.animate([{ transform: "translateY(" + dy + "px)" }, { transform: "translateY(0)" }], { duration: dur, easing: SPRING_SOFT });
     });
-    setTimeout(() => { animating = false; }, dur);
+    setTimeout(() => { animating = false; }, 450);
   }
   function navButton(v, name, icon, color, count, alert, isCat) {
     const b = el("button", "nav-item" + (isCat ? " cat" : "")); b.type = "button";
